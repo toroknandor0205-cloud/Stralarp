@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="gpx_cache" path="." />
+    <external-files-path name="gpx_files" path="Documents/" />
+    <files-path name="internal_gpx" path="." />
+</paths>
