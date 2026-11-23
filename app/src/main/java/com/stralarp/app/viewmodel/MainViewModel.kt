@@ -25,7 +25,8 @@ data class AppUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val snapToRoad: Boolean = true,
-    val simulationParams: SimulationParams = SimulationParams()
+    val simulationParams: SimulationParams = SimulationParams(),
+    val undoStack: List<Route> = emptyList()
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -35,12 +36,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
+    private fun pushUndo() {
+        val current = _uiState.value.currentRoute
+        _uiState.update {
+            val stack = (it.undoStack + current).takeLast(20)
+            it.copy(undoStack = stack)
+        }
+    }
+
     fun setSnapToRoad(enabled: Boolean) {
         _uiState.update { it.copy(snapToRoad = enabled) }
     }
 
     fun addWaypoint(lat: Double, lon: Double) {
         viewModelScope.launch {
+            pushUndo()
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val point = if (_uiState.value.snapToRoad) {
@@ -65,19 +75,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun undoLastPoint() {
+    fun undo() {
+        val stack = _uiState.value.undoStack
+        if (stack.isEmpty()) return
+        val previous = stack.last()
         _uiState.update {
-            it.copy(currentRoute = it.currentRoute.copy(points = it.currentRoute.points.dropLast(1)))
+            it.copy(
+                currentRoute = previous,
+                undoStack = stack.dropLast(1)
+            )
         }
     }
 
     fun clearRoute() {
-        _uiState.update {
-            it.copy(currentRoute = Route())
-        }
+        pushUndo()
+        _uiState.update { it.copy(currentRoute = Route()) }
     }
 
     fun reverseRoute() {
+        pushUndo()
         _uiState.update {
             it.copy(currentRoute = it.currentRoute.copy(points = it.currentRoute.points.reversed()))
         }
@@ -93,6 +109,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun importGpx(uri: Uri) {
         viewModelScope.launch {
+            pushUndo()
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val route = repo.parseGpx(uri)
@@ -107,6 +124,67 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.message ?: "Import failed") }
+            }
+        }
+    }
+
+    fun updateMetadata(name: String, description: String, activityType: String) {
+        pushUndo()
+        _uiState.update {
+            it.copy(
+                currentRoute = it.currentRoute.copy(
+                    name = name,
+                    description = description,
+                    activityType = activityType
+                )
+            )
+        }
+    }
+
+    fun updateSimulationParams(params: SimulationParams) {
+        _uiState.update { it.copy(simulationParams = params) }
+    }
+
+    fun runSimulation() {
+        viewModelScope.launch {
+            pushUndo()
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val simulated = repo.simulate(_uiState.value.currentRoute, _uiState.value.simulationParams)
+                _uiState.update {
+                    it.copy(currentRoute = simulated, isLoading = false)
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.message) }
+            }
+        }
+    }
+
+    fun trimRoute(startPercent: Float, endPercent: Float) {
+        val pts = _uiState.value.currentRoute.points
+        if (pts.size < 3) return
+        pushUndo()
+        val startIdx = (pts.size * startPercent / 100f).toInt().coerceIn(0, pts.size - 2)
+        val endIdx = (pts.size * endPercent / 100f).toInt().coerceIn(startIdx + 1, pts.size)
+        _uiState.update {
+            it.copy(currentRoute = it.currentRoute.copy(points = pts.subList(startIdx, endIdx)))
+        }
+    }
+
+    fun reEnrichElevation() {
+        viewModelScope.launch {
+            pushUndo()
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                val withEle = repo.enrichElevation(_uiState.value.currentRoute.points)
+                _uiState.update {
+                    it.copy(
+                        currentRoute = it.currentRoute.copy(points = withEle),
+                        isLoading = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
         }
     }
