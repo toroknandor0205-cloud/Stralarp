@@ -20,7 +20,6 @@ fun HomeScreen(viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsState()
     var showCreateScreen by remember { mutableStateOf(false) }
 
-    // GPX Import launcher
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -35,9 +34,7 @@ fun HomeScreen(viewModel: MainViewModel) {
     } else {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = { Text("Stralarp") }
-                )
+                TopAppBar(title = { Text("Stralarp") })
             }
         ) { padding ->
             Column(
@@ -48,19 +45,15 @@ fun HomeScreen(viewModel: MainViewModel) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(
-                    text = "Stralarp",
-                    style = MaterialTheme.typography.headlineLarge
-                )
+                Text("Stralarp", style = MaterialTheme.typography.headlineLarge)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "GPS Route Simulator & GPX Editor",
+                    "GPS Route Simulator & GPX Editor",
                     style = MaterialTheme.typography.bodyMedium
                 )
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // Current route stats
                 if (state.currentRoute.points.isNotEmpty()) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -70,7 +63,7 @@ fun HomeScreen(viewModel: MainViewModel) {
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
-                                text = state.currentRoute.name,
+                                state.currentRoute.name,
                                 style = MaterialTheme.typography.titleMedium
                             )
                             Spacer(modifier = Modifier.height(4.dp))
@@ -84,7 +77,6 @@ fun HomeScreen(viewModel: MainViewModel) {
                     Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                // Create button
                 Button(
                     onClick = { showCreateScreen = true },
                     modifier = Modifier.fillMaxWidth()
@@ -96,10 +88,16 @@ fun HomeScreen(viewModel: MainViewModel) {
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Import button
                 OutlinedButton(
                     onClick = {
-                        importLauncher.launch(arrayOf("application/gpx+xml", "application/octet-stream", "*/*"))
+                        importLauncher.launch(
+                            arrayOf(
+                                "application/gpx+xml",
+                                "application/xml",
+                                "text/xml",
+                                "*/*"
+                            )
+                        )
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -115,10 +113,7 @@ fun HomeScreen(viewModel: MainViewModel) {
 
                 state.error?.let { error ->
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = error,
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    Text(error, color = MaterialTheme.colorScheme.error)
                 }
             }
         }
