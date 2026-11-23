@@ -43,48 +43,13 @@ class ElevationClient {
                     for (j in 0 until elevations.length()) {
                         val ele = elevations.optDouble(j, Double.NaN)
                         val p = batch[j]
-                        result.add(
-                            if (!ele.isNaN()) p.copy(elevation = ele) else p
-                        )
+                        result.add(if (!ele.isNaN()) p.copy(elevation = ele) else p)
                     }
                 }
             } catch (e: Exception) {
                 result.addAll(batch)
             }
         }
-
-        interpolateMissingElevations(result)
-    }
-
-    private fun interpolateMissingElevations(points: List<TrackPoint>): List<TrackPoint> {
-        if (points.size < 2) return points
-        val out = points.toMutableList()
-        var lastKnown: Double? = null
-
-        for (i in out.indices) {
-            val ele = out[i].elevation
-            if (ele != null) {
-                lastKnown = ele
-            } else if (lastKnown != null) {
-                var nextKnown: Double? = null
-                var nextIdx = -1
-                for (j in i + 1 until out.size) {
-                    if (out[j].elevation != null) {
-                        nextKnown = out[j].elevation
-                        nextIdx = j
-                        break
-                    }
-                }
-                if (nextKnown != null) {
-                    val fraction = (i - (i - 1).coerceAtLeast(0)).toDouble() /
-                            (nextIdx - (i - 1).coerceAtLeast(0)).toDouble()
-                    val interpolated = lastKnown + (nextKnown - lastKnown) * fraction
-                    out[i] = out[i].copy(elevation = interpolated)
-                } else {
-                    out[i] = out[i].copy(elevation = lastKnown)
-                }
-            }
-        }
-        return out
+        result
     }
 }

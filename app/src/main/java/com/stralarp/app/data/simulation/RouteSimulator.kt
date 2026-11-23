@@ -4,7 +4,9 @@ import com.stralarp.app.data.model.Route
 import com.stralarp.app.data.model.SimulationParams
 import com.stralarp.app.data.model.TrackPoint
 import java.time.ZoneOffset
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.min
 import kotlin.random.Random
 
 class RouteSimulator {
@@ -72,7 +74,6 @@ class RouteSimulator {
             ?: (totalDistM / 1000.0 * params.targetPaceMinPerKm * 60.0).toLong()
 
         val interval = params.samplingIntervalSeconds.coerceAtLeast(1)
-        val variability = (params.paceVariabilityPercent / 100.0).coerceIn(0.0, 0.4)
 
         val cumDist = DoubleArray(points.size)
         for (i in 1 until points.size) {
@@ -105,14 +106,7 @@ class RouteSimulator {
                 p1.elevation + (p2.elevation - p1.elevation) * frac
             } else p1.elevation ?: p2.elevation
 
-            result.add(
-                TrackPoint(
-                    lat = lat,
-                    lon = lon,
-                    elevation = ele,
-                    time = currentTime
-                )
-            )
+            result.add(TrackPoint(lat = lat, lon = lon, elevation = ele, time = currentTime))
 
             currentTime = currentTime.plusSeconds(interval.toLong())
             t += interval

@@ -31,7 +31,7 @@ class GpxWriter {
         writer.appendLine("    <trkseg>")
 
         for (p in route.points) {
-            writer.append("      <trkpt lat=\"\( {p.lat}\" lon=\" \){p.lon}\">")
+            writer.append("      <trkpt lat=\"${p.lat}\" lon=\"${p.lon}\">")
             if (p.elevation != null) {
                 writer.append("<ele>${"%.2f".format(p.elevation)}</ele>")
             }
