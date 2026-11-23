@@ -1,6 +1,12 @@
 package com.stralarp.app.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,6 +20,13 @@ fun HomeScreen(viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsState()
     var showCreateScreen by remember { mutableStateOf(false) }
 
+    // GPX Import launcher
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.importGpx(it) }
+    }
+
     if (showCreateScreen) {
         CreateRouteScreen(
             viewModel = viewModel,
@@ -22,7 +35,9 @@ fun HomeScreen(viewModel: MainViewModel) {
     } else {
         Scaffold(
             topBar = {
-                TopAppBar(title = { Text("Stralarp") })
+                TopAppBar(
+                    title = { Text("Stralarp") }
+                )
             }
         ) { padding ->
             Column(
@@ -34,28 +49,76 @@ fun HomeScreen(viewModel: MainViewModel) {
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "Points: ${state.currentRoute.points.size}",
-                    style = MaterialTheme.typography.headlineMedium
+                    text = "Stralarp",
+                    style = MaterialTheme.typography.headlineLarge
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Distance: ${"%.2f".format(state.currentRoute.totalDistanceKm)} km",
-                    style = MaterialTheme.typography.titleMedium
+                    text = "GPS Route Simulator & GPX Editor",
+                    style = MaterialTheme.typography.bodyMedium
                 )
+
                 Spacer(modifier = Modifier.height(32.dp))
 
+                // Current route stats
+                if (state.currentRoute.points.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = state.currentRoute.name,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("${state.currentRoute.points.size} points")
+                            Text("${"%.2f".format(state.currentRoute.totalDistanceKm)} km")
+                            if (state.currentRoute.elevationGain > 0) {
+                                Text("↑ ${"%.0f".format(state.currentRoute.elevationGain)} m")
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+
+                // Create button
                 Button(
                     onClick = { showCreateScreen = true },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Create New Route")
+                    Icon(Icons.Default.Map, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Create / Edit Route")
                 }
+
                 Spacer(modifier = Modifier.height(12.dp))
+
+                // Import button
                 OutlinedButton(
-                    onClick = { },
+                    onClick = {
+                        importLauncher.launch(arrayOf("application/gpx+xml", "application/octet-stream", "*/*"))
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Import GPX (coming soon)")
+                    Icon(Icons.Default.FileOpen, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Import GPX")
+                }
+
+                if (state.isLoading) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    CircularProgressIndicator()
+                }
+
+                state.error?.let { error ->
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         }
