@@ -7,7 +7,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Loop
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,7 +25,8 @@ import com.stralarp.app.data.model.SimulationParams
 import com.stralarp.app.ui.components.OsmdroidMap
 import com.stralarp.app.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,20 +50,18 @@ fun CreateRouteScreen(
                 title = { Text("Create Route") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     IconButton(onClick = { showSettings = true }) {
                         Icon(Icons.Default.Tune, contentDescription = "Settings")
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Snap", style = MaterialTheme.typography.labelSmall)
-                        Switch(
-                            checked = state.snapToRoad,
-                            onCheckedChange = { viewModel.setSnapToRoad(it) }
-                        )
-                    }
+                    Text("Snap", style = MaterialTheme.typography.labelSmall)
+                    Switch(
+                        checked = state.snapToRoad,
+                        onCheckedChange = { viewModel.setSnapToRoad(it) }
+                    )
                 }
             )
         },
@@ -119,7 +125,7 @@ fun CreateRouteScreen(
                             enabled = state.currentRoute.points.size >= 2,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Default.Save, null, Modifier.size(18.dp))
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("Save")
                         }
@@ -128,7 +134,7 @@ fun CreateRouteScreen(
                             enabled = state.currentRoute.points.size >= 2,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Default.Share, null, Modifier.size(18.dp))
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("Share")
                         }
@@ -137,7 +143,7 @@ fun CreateRouteScreen(
             }
         }
     ) { padding ->
-        Box(Modifier = Modifier.fillMaxSize().padding(padding)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             OsmdroidMap(
                 modifier = Modifier.fillMaxSize(),
                 points = state.currentRoute.points,
@@ -148,24 +154,37 @@ fun CreateRouteScreen(
             if (state.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
+
+            state.error?.let { msg ->
+                Text(
+                    text = msg,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp)
+                )
+            }
         }
     }
 
     if (showSettings) {
-        ModalBottomSheet(onDismissRequest = { showSettings = false }) {
-            SettingsSheet(
-                viewModel = viewModel,
-                onClose = { showSettings = false }
-            )
-        }
+        AlertDialog(
+            onDismissRequest = { showSettings = false },
+            title = { Text("Route Settings") },
+            text = {
+                SettingsContent(viewModel = viewModel)
+            },
+            confirmButton = {
+                TextButton(onClick = { showSettings = false }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 }
 
 @Composable
-private fun SettingsSheet(
-    viewModel: MainViewModel,
-    onClose: () -> Unit
-) {
+private fun SettingsContent(viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsState()
     var name by remember { mutableStateOf(state.currentRoute.name) }
     var description by remember { mutableStateOf(state.currentRoute.description) }
@@ -180,68 +199,52 @@ private fun SettingsSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .heightIn(max = 480.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Text("Route Settings", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(16.dp))
-
-        // Metadata
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
             label = { Text("Name") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
         )
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = description,
             onValueChange = { description = it },
             label = { Text("Description") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
         )
         Spacer(Modifier.height(8.dp))
 
-        Text("Activity type")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Activity", style = MaterialTheme.typography.labelMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             listOf("running", "trail_running", "cycling", "walking").forEach { type ->
                 FilterChip(
                     selected = activityType == type,
                     onClick = { activityType = type },
-                    label = { Text(type.replace('_', ' ')) }
+                    label = { Text(type.replace('_', ' '), style = MaterialTheme.typography.labelSmall) }
                 )
             }
         }
 
         Spacer(Modifier.height(8.dp))
         Button(
-            onClick = {
-                viewModel.updateMetadata(name, description, activityType)
-            },
+            onClick = { viewModel.updateMetadata(name, description, activityType) },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Save Metadata")
         }
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-
-        // Simulation
-        Text("Simulation", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(8.dp))
+        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
         Text("Target Pace: ${"%.1f".format(pace)} min/km")
-        Slider(
-            value = pace,
-            onValueChange = { pace = it },
-            valueRange = 3f..12f
-        )
+        Slider(value = pace, onValueChange = { pace = it }, valueRange = 3f..12f)
 
-        Text("Pace Variability: ${"%.0f".format(variability)}%")
-        Slider(
-            value = variability,
-            onValueChange = { variability = it },
-            valueRange = 0f..20f
-        )
+        Text("Variability: ${"%.0f".format(variability)}%")
+        Slider(value = variability, onValueChange = { variability = it }, valueRange = 0f..20f)
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("GPS Jitter")
@@ -250,11 +253,7 @@ private fun SettingsSheet(
         }
 
         Text("Elevation Scale: ${"%.1f".format(elevScale)}x")
-        Slider(
-            value = elevScale,
-            onValueChange = { elevScale = it },
-            valueRange = 0.5f..2.0f
-        )
+        Slider(value = elevScale, onValueChange = { elevScale = it }, valueRange = 0.5f..2.0f)
 
         Button(
             onClick = {
@@ -274,13 +273,11 @@ private fun SettingsSheet(
             Text("Apply Simulation")
         }
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-        // Trim
-        Text("Trim Route", style = MaterialTheme.typography.titleMedium)
-        Text("Start: ${"%.0f".format(startTrim)}%")
+        Text("Trim Start: ${"%.0f".format(startTrim)}%")
         Slider(value = startTrim, onValueChange = { startTrim = it }, valueRange = 0f..90f)
-        Text("End: ${"%.0f".format(endTrim)}%")
+        Text("Trim End: ${"%.0f".format(endTrim)}%")
         Slider(value = endTrim, onValueChange = { endTrim = it }, valueRange = 10f..100f)
 
         Button(
@@ -292,7 +289,6 @@ private fun SettingsSheet(
         }
 
         Spacer(Modifier.height(8.dp))
-
         OutlinedButton(
             onClick = { viewModel.reEnrichElevation() },
             enabled = state.currentRoute.points.isNotEmpty(),
@@ -300,11 +296,5 @@ private fun SettingsSheet(
         ) {
             Text("Re-fetch Elevation")
         }
-
-        Spacer(Modifier.height(24.dp))
-        TextButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
-            Text("Close")
-        }
-        Spacer(modifier.height(32.dp))
     }
 }
