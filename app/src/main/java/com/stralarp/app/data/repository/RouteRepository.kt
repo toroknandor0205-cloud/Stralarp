@@ -31,6 +31,10 @@ class RouteRepository(private val context: Context) {
         return osrm.nearest(lat, lon)
     }
 
+    suspend fun routeSegment(from: TrackPoint, to: TrackPoint): List<TrackPoint> {
+        return osrm.routeSegment(from, to)
+    }
+
     suspend fun enrichElevation(points: List<TrackPoint>): List<TrackPoint> {
         return elevation.enrichWithElevation(points)
     }

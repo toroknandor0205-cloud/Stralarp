@@ -21,8 +21,9 @@ fun OsmdroidMap(
     modifier: Modifier = Modifier,
     points: List<TrackPoint>,
     onMapClick: (Double, Double) -> Unit,
-    /** Only auto-fit when the route first appears or is replaced (e.g. import). */
-    fitWhenEmptyToNonEmpty: Boolean = true
+    /** When true, zoom to fit the current route once, then caller should clear the flag. */
+    fitRouteRequest: Boolean = false,
+    onFitHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -32,15 +33,12 @@ fun OsmdroidMap(
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
             controller.setZoom(15.0)
-            // Default center roughly Europe; user will pan
             controller.setCenter(GeoPoint(47.5, 19.0))
             val rotationOverlay = RotationGestureOverlay(this)
             rotationOverlay.isEnabled = true
             overlays.add(rotationOverlay)
         }
     }
-
-    var previousCount by remember { mutableIntStateOf(0) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -57,7 +55,6 @@ fun OsmdroidMap(
         }
     }
 
-    // Click listener once
     LaunchedEffect(Unit) {
         mapView.overlays.add(object : org.osmdroid.views.overlay.Overlay() {
             override fun onSingleTapConfirmed(e: android.view.MotionEvent?, mapView: MapView?): Boolean {
@@ -69,7 +66,7 @@ fun OsmdroidMap(
         })
     }
 
-    // Redraw route – do NOT zoom on every point add
+    // Draw route — never auto-zoom on every point
     LaunchedEffect(points) {
         mapView.overlays.removeAll {
             it is Polyline || (it is Marker && it.title in listOf("Start", "Finish"))
@@ -84,44 +81,37 @@ fun OsmdroidMap(
             }
             mapView.overlays.add(line)
 
-            val start = Marker(mapView).apply {
+            mapView.overlays.add(Marker(mapView).apply {
                 position = geoPoints.first()
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                 title = "Start"
-            }
-            mapView.overlays.add(start)
+            })
 
             if (geoPoints.size > 1) {
-                val finish = Marker(mapView).apply {
+                mapView.overlays.add(Marker(mapView).apply {
                     position = geoPoints.last()
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     title = "Finish"
-                }
-                mapView.overlays.add(finish)
-            }
-
-            // Only fit bounds when going from empty → has points (import / first draw)
-            // or when point count jumps a lot (e.g. after snap of many points)
-            val shouldFit = fitWhenEmptyToNonEmpty &&
-                    (previousCount == 0 && points.isNotEmpty()) ||
-                    (points.size - previousCount > 5)
-
-            if (shouldFit) {
-                try {
-                    mapView.zoomToBoundingBox(
-                        org.osmdroid.util.BoundingBox.fromGeoPoints(geoPoints),
-                        false, // animate = false to feel less jumpy
-                        80
-                    )
-                } catch (_: Exception) { }
+                })
             }
         }
-        previousCount = points.size
         mapView.invalidate()
     }
 
-    AndroidView(
-        factory = { mapView },
-        modifier = modifier
-    )
+    // Fit only when requested (Fit button / import)
+    LaunchedEffect(fitRouteRequest, points) {
+        if (fitRouteRequest && points.isNotEmpty()) {
+            try {
+                val geoPoints = points.map { GeoPoint(it.lat, it.lon) }
+                mapView.zoomToBoundingBox(
+                    org.osmdroid.util.BoundingBox.fromGeoPoints(geoPoints),
+                    true,
+                    100
+                )
+            } catch (_: Exception) { }
+            onFitHandled()
+        }
+    }
+
+    AndroidView(factory = { mapView }, modifier = modifier)
 }
