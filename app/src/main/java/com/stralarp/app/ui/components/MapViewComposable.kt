@@ -21,7 +21,8 @@ fun OsmdroidMap(
     modifier: Modifier = Modifier,
     points: List<TrackPoint>,
     onMapClick: (Double, Double) -> Unit,
-    centerOnRoute: Boolean = true
+    /** Only auto-fit when the route first appears or is replaced (e.g. import). */
+    fitWhenEmptyToNonEmpty: Boolean = true
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -31,11 +32,15 @@ fun OsmdroidMap(
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
             controller.setZoom(15.0)
+            // Default center roughly Europe; user will pan
+            controller.setCenter(GeoPoint(47.5, 19.0))
             val rotationOverlay = RotationGestureOverlay(this)
             rotationOverlay.isEnabled = true
             overlays.add(rotationOverlay)
         }
     }
+
+    var previousCount by remember { mutableIntStateOf(0) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -52,6 +57,7 @@ fun OsmdroidMap(
         }
     }
 
+    // Click listener once
     LaunchedEffect(Unit) {
         mapView.overlays.add(object : org.osmdroid.views.overlay.Overlay() {
             override fun onSingleTapConfirmed(e: android.view.MotionEvent?, mapView: MapView?): Boolean {
@@ -63,8 +69,11 @@ fun OsmdroidMap(
         })
     }
 
+    // Redraw route – do NOT zoom on every point add
     LaunchedEffect(points) {
-        mapView.overlays.removeAll { it is Polyline || (it is Marker && it.title in listOf("Start", "Finish")) }
+        mapView.overlays.removeAll {
+            it is Polyline || (it is Marker && it.title in listOf("Start", "Finish"))
+        }
 
         if (points.isNotEmpty()) {
             val geoPoints = points.map { GeoPoint(it.lat, it.lon) }
@@ -91,14 +100,23 @@ fun OsmdroidMap(
                 mapView.overlays.add(finish)
             }
 
-            if (centerOnRoute) {
-                mapView.zoomToBoundingBox(
-                    org.osmdroid.util.BoundingBox.fromGeoPoints(geoPoints),
-                    true,
-                    100
-                )
+            // Only fit bounds when going from empty → has points (import / first draw)
+            // or when point count jumps a lot (e.g. after snap of many points)
+            val shouldFit = fitWhenEmptyToNonEmpty &&
+                    (previousCount == 0 && points.isNotEmpty()) ||
+                    (points.size - previousCount > 5)
+
+            if (shouldFit) {
+                try {
+                    mapView.zoomToBoundingBox(
+                        org.osmdroid.util.BoundingBox.fromGeoPoints(geoPoints),
+                        false, // animate = false to feel less jumpy
+                        80
+                    )
+                } catch (_: Exception) { }
             }
         }
+        previousCount = points.size
         mapView.invalidate()
     }
 
