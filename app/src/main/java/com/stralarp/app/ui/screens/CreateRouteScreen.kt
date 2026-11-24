@@ -25,6 +25,8 @@ import com.stralarp.app.data.model.SimulationParams
 import com.stralarp.app.ui.components.OsmdroidMap
 import com.stralarp.app.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 
@@ -148,7 +150,7 @@ fun CreateRouteScreen(
                 modifier = Modifier.fillMaxSize(),
                 points = state.currentRoute.points,
                 onMapClick = { lat, lon -> viewModel.addWaypoint(lat, lon) },
-                centerOnRoute = true
+                fitWhenEmptyToNonEmpty = true
             )
 
             if (state.isLoading) {
@@ -171,9 +173,7 @@ fun CreateRouteScreen(
         AlertDialog(
             onDismissRequest = { showSettings = false },
             title = { Text("Route Settings") },
-            text = {
-                SettingsContent(viewModel = viewModel)
-            },
+            text = { SettingsContent(viewModel = viewModel) },
             confirmButton = {
                 TextButton(onClick = { showSettings = false }) {
                     Text("Close")
@@ -189,17 +189,30 @@ private fun SettingsContent(viewModel: MainViewModel) {
     var name by remember { mutableStateOf(state.currentRoute.name) }
     var description by remember { mutableStateOf(state.currentRoute.description) }
     var activityType by remember { mutableStateOf(state.currentRoute.activityType) }
+    var usePace by remember { mutableStateOf(state.simulationParams.usePace) }
     var pace by remember { mutableStateOf(state.simulationParams.targetPaceMinPerKm.toFloat()) }
+    var durationMin by remember {
+        mutableStateOf(
+            ((state.simulationParams.targetDurationSeconds ?: 1800L) / 60f)
+        )
+    }
     var variability by remember { mutableStateOf(state.simulationParams.paceVariabilityPercent) }
     var jitter by remember { mutableStateOf(state.simulationParams.injectGpsJitter) }
     var elevScale by remember { mutableStateOf(state.simulationParams.scaleElevation) }
     var startTrim by remember { mutableStateOf(0f) }
     var endTrim by remember { mutableStateOf(100f) }
+    var startTimeText by remember {
+        mutableStateOf(
+            state.simulationParams.startDateTime.format(
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            )
+        )
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 480.dp)
+            .heightIn(max = 520.dp)
             .verticalScroll(rememberScrollState())
     ) {
         OutlinedTextField(
@@ -209,7 +222,7 @@ private fun SettingsContent(viewModel: MainViewModel) {
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = description,
             onValueChange = { description = it },
@@ -217,7 +230,7 @@ private fun SettingsContent(viewModel: MainViewModel) {
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Text("Activity", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -225,12 +238,17 @@ private fun SettingsContent(viewModel: MainViewModel) {
                 FilterChip(
                     selected = activityType == type,
                     onClick = { activityType = type },
-                    label = { Text(type.replace('_', ' '), style = MaterialTheme.typography.labelSmall) }
+                    label = {
+                        Text(
+                            type.replace('_', ' '),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 )
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Button(
             onClick = { viewModel.updateMetadata(name, description, activityType) },
             modifier = Modifier.fillMaxWidth()
@@ -240,8 +258,28 @@ private fun SettingsContent(viewModel: MainViewModel) {
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-        Text("Target Pace: ${"%.1f".format(pace)} min/km")
-        Slider(value = pace, onValueChange = { pace = it }, valueRange = 3f..12f)
+        Text("Start time (yyyy-MM-dd HH:mm)", style = MaterialTheme.typography.labelMedium)
+        OutlinedTextField(
+            value = startTimeText,
+            onValueChange = { startTimeText = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Use Pace")
+            Spacer(Modifier.weight(1f))
+            Switch(checked = usePace, onCheckedChange = { usePace = it })
+        }
+
+        if (usePace) {
+            Text("Target Pace: ${"%.1f".format(pace)} min/km")
+            Slider(value = pace, onValueChange = { pace = it }, valueRange = 3f..12f)
+        } else {
+            Text("Duration: ${"%.0f".format(durationMin)} min")
+            Slider(value = durationMin, onValueChange = { durationMin = it }, valueRange = 5f..300f)
+        }
 
         Text("Variability: ${"%.0f".format(variability)}%")
         Slider(value = variability, onValueChange = { variability = it }, valueRange = 0f..20f)
@@ -257,9 +295,20 @@ private fun SettingsContent(viewModel: MainViewModel) {
 
         Button(
             onClick = {
+                val startDt = try {
+                    LocalDateTime.parse(
+                        startTimeText.trim(),
+                        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                    )
+                } catch (_: Exception) {
+                    LocalDateTime.now()
+                }
                 viewModel.updateSimulationParams(
                     SimulationParams(
+                        startDateTime = startDt,
                         targetPaceMinPerKm = pace.toDouble(),
+                        targetDurationSeconds = (durationMin * 60).toLong(),
+                        usePace = usePace,
                         paceVariabilityPercent = variability,
                         injectGpsJitter = jitter,
                         scaleElevation = elevScale
@@ -288,7 +337,7 @@ private fun SettingsContent(viewModel: MainViewModel) {
             Text("Apply Trim")
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         OutlinedButton(
             onClick = { viewModel.reEnrichElevation() },
             enabled = state.currentRoute.points.isNotEmpty(),

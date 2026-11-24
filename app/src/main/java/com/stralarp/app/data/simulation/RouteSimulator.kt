@@ -70,8 +70,11 @@ class RouteSimulator {
         val totalDistM = points.zipWithNext { a, b -> a.distanceTo(b) }.sum()
         if (totalDistM < 1.0) return points
 
-        val targetDurationSec = params.targetDurationSeconds
-            ?: (totalDistM / 1000.0 * params.targetPaceMinPerKm * 60.0).toLong()
+        val targetDurationSec = if (!params.usePace && params.targetDurationSeconds != null) {
+            params.targetDurationSeconds
+        } else {
+            (totalDistM / 1000.0 * params.targetPaceMinPerKm * 60.0).toLong().coerceAtLeast(1L)
+        }
 
         val interval = params.samplingIntervalSeconds.coerceAtLeast(1)
 
@@ -87,7 +90,7 @@ class RouteSimulator {
 
         var t = 0L
         while (t <= targetDurationSec) {
-            val progress = t.toDouble() / targetDurationSec
+            val progress = if (targetDurationSec > 0) t.toDouble() / targetDurationSec else 0.0
             val targetDist = progress * totalDistM
 
             while (lastIdx < cumDist.size - 1 && cumDist[lastIdx + 1] < targetDist) {
