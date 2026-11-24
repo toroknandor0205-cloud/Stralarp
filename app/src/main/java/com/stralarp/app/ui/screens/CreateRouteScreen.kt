@@ -3,12 +3,23 @@ package com.stralarp.app.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material.icons.filled.Save
@@ -16,8 +27,34 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Undo
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ZoomOutMap
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,14 +90,16 @@ fun CreateRouteScreen(
     }
 
     LaunchedEffect(state.message) {
-        state.message?.let {
-            snackbarHostState.showSnackbar(it)
+        val msg = state.message
+        if (msg != null) {
+            snackbarHostState.showSnackbar(msg)
             viewModel.clearMessage()
         }
     }
     LaunchedEffect(state.error) {
-        state.error?.let {
-            snackbarHostState.showSnackbar(it)
+        val err = state.error
+        if (err != null) {
+            snackbarHostState.showSnackbar(err)
             viewModel.clearError()
         }
     }
@@ -77,7 +116,7 @@ fun CreateRouteScreen(
                 },
                 actions = {
                     IconButton(onClick = { viewModel.fitRoute() }) {
-                        Icon(Icons.Default.CenterFocusStrong, contentDescription = "Fit route")
+                        Icon(Icons.Default.ZoomOutMap, contentDescription = "Fit route")
                     }
                     IconButton(onClick = { showSettings = true }) {
                         Icon(Icons.Default.Tune, contentDescription = "Settings")
@@ -91,10 +130,7 @@ fun CreateRouteScreen(
             )
         },
         bottomBar = {
-            Surface(
-                color = Color(0xE6121212),
-                tonalElevation = 0.dp
-            ) {
+            Surface(color = Color(0xE6121212)) {
                 Column(modifier = Modifier.padding(10.dp)) {
                     if (state.currentRoute.points.isNotEmpty()) {
                         Row(
@@ -163,8 +199,8 @@ fun CreateRouteScreen(
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
                         ) {
-                            Icon(Icons.Default.Save, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             GlassText("Save")
                         }
                         GlassOutlinedButton(
@@ -173,8 +209,8 @@ fun CreateRouteScreen(
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
                         ) {
-                            Icon(Icons.Default.Share, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             GlassText("Share")
                         }
                     }
@@ -312,7 +348,7 @@ private fun SettingsContent(viewModel: MainViewModel) {
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("GPS Jitter")
-            Spacer(Modifier.weight(1f))
+            Spacer(modifier.weight(1f))
             Switch(checked = jitter, onCheckedChange = { jitter = it })
         }
 
