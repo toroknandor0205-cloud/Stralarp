@@ -24,9 +24,11 @@ data class AppUiState(
     val currentRoute: Route = Route(),
     val isLoading: Boolean = false,
     val error: String? = null,
+    val message: String? = null,
     val snapToRoad: Boolean = true,
     val simulationParams: SimulationParams = SimulationParams(),
-    val undoStack: List<Route> = emptyList()
+    val undoStack: List<Route> = emptyList(),
+    val requestFitRoute: Boolean = false
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -51,28 +53,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addWaypoint(lat: Double, lon: Double) {
         viewModelScope.launch {
             pushUndo()
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true, error = null, message = null) }
             try {
-                val point = if (_uiState.value.snapToRoad) {
+                val existing = _uiState.value.currentRoute.points
+                val snap = _uiState.value.snapToRoad
+
+                val newPoint = if (snap) {
                     repo.nearestPoint(lat, lon) ?: TrackPoint(lat, lon)
                 } else {
                     TrackPoint(lat, lon)
                 }
-                val newPoints = _uiState.value.currentRoute.points + point
-                val snapped = if (newPoints.size > 1 && _uiState.value.snapToRoad) {
-                    repo.snapWaypoints(newPoints)
-                } else newPoints
-                val withEle = repo.enrichElevation(snapped)
+
+                val updatedPoints = if (existing.isEmpty()) {
+                    listOf(newPoint)
+                } else if (snap) {
+                    // Only route the new segment — more reliable than re-routing entire path
+                    val last = existing.last()
+                    val segment = repo.routeSegment(last, newPoint)
+                    if (segment.size >= 2) {
+                        existing.dropLast(1) + segment
+                    } else {
+                        existing + newPoint
+                    }
+                } else {
+                    existing + newPoint
+                }
+
+                // Elevation only for new points at end (keep it light)
+                val withEle = if (updatedPoints.size <= 30) {
+                    repo.enrichElevation(updatedPoints)
+                } else {
+                    val head = updatedPoints.dropLast(20)
+                    val tail = repo.enrichElevation(updatedPoints.takeLast(20))
+                    head + tail
+                }
+
+                val name = ensureRouteName(_uiState.value.currentRoute.name, withEle.size)
                 _uiState.update {
                     it.copy(
-                        currentRoute = it.currentRoute.copy(points = withEle),
+                        currentRoute = it.currentRoute.copy(name = name, points = withEle),
                         isLoading = false
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                _uiState.update {
+                    it.copy(isLoading = false, error = e.message ?: "Failed to add point")
+                }
             }
         }
+    }
+
+    private fun ensureRouteName(current: String, pointCount: Int): String {
+        if (current.isNotBlank() && current != "Stralarp Route") return current
+        val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        return "Run – $date"
     }
 
     fun undo() {
@@ -80,10 +114,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (stack.isEmpty()) return
         val previous = stack.last()
         _uiState.update {
-            it.copy(
-                currentRoute = previous,
-                undoStack = stack.dropLast(1)
-            )
+            it.copy(currentRoute = previous, undoStack = stack.dropLast(1))
         }
     }
 
@@ -107,10 +138,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun fitRoute() {
+        _uiState.update { it.copy(requestFitRoute = true) }
+    }
+
+    fun clearFitRequest() {
+        _uiState.update { it.copy(requestFitRoute = false) }
+    }
+
     fun importGpx(uri: Uri) {
         viewModelScope.launch {
             pushUndo()
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true, error = null, message = null) }
             try {
                 val route = repo.parseGpx(uri)
                 val withEle = if (route.points.any { it.elevation == null }) {
@@ -119,11 +158,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         currentRoute = route.copy(points = withEle),
-                        isLoading = false
+                        isLoading = false,
+                        message = "Imported ${withEle.size} points",
+                        requestFitRoute = true
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Import failed") }
+                _uiState.update {
+                    it.copy(isLoading = false, error = e.message ?: "Import failed")
+                }
             }
         }
     }
@@ -133,10 +176,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update {
             it.copy(
                 currentRoute = it.currentRoute.copy(
-                    name = name,
+                    name = name.ifBlank { it.currentRoute.name },
                     description = description,
                     activityType = activityType
-                )
+                ),
+                message = "Metadata saved"
             )
         }
     }
@@ -148,11 +192,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun runSimulation() {
         viewModelScope.launch {
             pushUndo()
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true, error = null, message = null) }
             try {
-                val simulated = repo.simulate(_uiState.value.currentRoute, _uiState.value.simulationParams)
+                val simulated = repo.simulate(
+                    _uiState.value.currentRoute,
+                    _uiState.value.simulationParams
+                )
                 _uiState.update {
-                    it.copy(currentRoute = simulated, isLoading = false)
+                    it.copy(
+                        currentRoute = simulated,
+                        isLoading = false,
+                        message = "Simulation applied (${simulated.points.size} points)"
+                    )
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
@@ -167,20 +218,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val startIdx = (pts.size * startPercent / 100f).toInt().coerceIn(0, pts.size - 2)
         val endIdx = (pts.size * endPercent / 100f).toInt().coerceIn(startIdx + 1, pts.size)
         _uiState.update {
-            it.copy(currentRoute = it.currentRoute.copy(points = pts.subList(startIdx, endIdx)))
+            it.copy(
+                currentRoute = it.currentRoute.copy(points = pts.subList(startIdx, endIdx)),
+                message = "Trimmed to ${endIdx - startIdx} points"
+            )
         }
     }
 
     fun reEnrichElevation() {
         viewModelScope.launch {
             pushUndo()
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, message = null) }
             try {
                 val withEle = repo.enrichElevation(_uiState.value.currentRoute.points)
                 _uiState.update {
                     it.copy(
                         currentRoute = it.currentRoute.copy(points = withEle),
-                        isLoading = false
+                        isLoading = false,
+                        message = "Elevation updated"
                     )
                 }
             } catch (e: Exception) {
@@ -192,7 +247,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun writeToDocument(uri: Uri) {
         viewModelScope.launch {
             try {
-                repo.writeToUri(_uiState.value.currentRoute, uri)
+                val route = autoNameIfNeeded(_uiState.value.currentRoute)
+                repo.writeToUri(route, uri)
+                _uiState.update {
+                    it.copy(currentRoute = route, message = "GPX saved")
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message ?: "Save failed") }
             }
@@ -201,11 +260,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun exportGpxAndShare(context: Context) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true, error = null, message = null) }
             try {
+                val route = autoNameIfNeeded(_uiState.value.currentRoute)
                 val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                 val fileName = "Stralarp_$date.gpx"
-                val file = repo.exportGpx(_uiState.value.currentRoute, fileName)
+                val file = repo.exportGpx(route, fileName)
 
                 val uri = FileProvider.getUriForFile(
                     context,
@@ -220,14 +280,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 context.startActivity(Intent.createChooser(shareIntent, "Share GPX"))
 
-                _uiState.update { it.copy(isLoading = false) }
+                _uiState.update {
+                    it.copy(
+                        currentRoute = route,
+                        isLoading = false,
+                        message = "Ready to share"
+                    )
+                }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Share failed") }
+                _uiState.update {
+                    it.copy(isLoading = false, error = e.message ?: "Share failed")
+                }
             }
         }
     }
 
+    private fun autoNameIfNeeded(route: Route): Route {
+        if (route.name.isNotBlank() && route.name != "Stralarp Route") return route
+        val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        return route.copy(name = "Run – $date")
+    }
+
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    fun clearMessage() {
+        _uiState.update { it.copy(message = null) }
     }
 }

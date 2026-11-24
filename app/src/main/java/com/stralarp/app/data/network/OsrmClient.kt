@@ -11,30 +11,89 @@ import java.util.concurrent.TimeUnit
 class OsrmClient {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
         .build()
 
-    suspend fun snapToRoad(waypoints: List<TrackPoint>): List<TrackPoint> = withContext(Dispatchers.IO) {
-        if (waypoints.size < 2) return@withContext waypoints
+    private val userAgent = "Stralarp/1.0 (Android; route simulator)"
 
-        val coords = waypoints.joinToString(";") { "${it.lon},${it.lat}" }
-        val url = "https://router.project-osrm.org/route/v1/foot/$coords?overview=full&geometries=geojson&steps=false"
+    /**
+     * Snap a single coordinate to nearest foot path.
+     * Tries foot profile, then walking, then driving as fallback.
+     */
+    suspend fun nearest(lat: Double, lon: Double): TrackPoint? = withContext(Dispatchers.IO) {
+        for (profile in listOf("foot", "walking", "driving")) {
+            val result = nearestWithProfile(lat, lon, profile)
+            if (result != null) return@withContext result
+        }
+        null
+    }
 
-        try {
-            val request = Request.Builder().url(url).get().build()
+    private fun nearestWithProfile(lat: Double, lon: Double, profile: String): TrackPoint? {
+        val url = "https://router.project-osrm.org/nearest/v1/$profile/$lon,$lat?number=1"
+        return try {
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgent)
+                .get()
+                .build()
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext waypoints
-                val body = response.body?.string() ?: return@withContext waypoints
+                if (!response.isSuccessful) return null
+                val body = response.body?.string() ?: return null
                 val json = JSONObject(body)
-                if (json.optString("code") != "Ok") return@withContext waypoints
+                if (json.optString("code") != "Ok") return null
+                val waypoints = json.optJSONArray("waypoints") ?: return null
+                if (waypoints.length() == 0) return null
+                val location = waypoints.getJSONObject(0).getJSONArray("location")
+                TrackPoint(lat = location.getDouble(1), lon = location.getDouble(0))
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
-                val routes = json.getJSONArray("routes")
-                if (routes.length() == 0) return@withContext waypoints
+    /**
+     * Route between two points and return the full geometry (many track points).
+     * Used when adding a waypoint so only the new segment is snapped.
+     */
+    suspend fun routeSegment(from: TrackPoint, to: TrackPoint): List<TrackPoint> =
+        withContext(Dispatchers.IO) {
+            for (profile in listOf("foot", "walking")) {
+                val result = routeSegmentWithProfile(from, to, profile)
+                if (result.size >= 2) return@withContext result
+            }
+            // Fallback: just the two endpoints (straight)
+            listOf(from, to)
+        }
+
+    private fun routeSegmentWithProfile(
+        from: TrackPoint,
+        to: TrackPoint,
+        profile: String
+    ): List<TrackPoint> {
+        // radiuses help OSRM snap nearby points onto the network
+        val url =
+            "https://router.project-osrm.org/route/v1/$profile/" +
+                    "${from.lon},${from.lat};${to.lon},${to.lat}" +
+                    "?overview=full&geometries=geojson&steps=false&radiuses=50;50"
+
+        return try {
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgent)
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return emptyList()
+                val body = response.body?.string() ?: return emptyList()
+                val json = JSONObject(body)
+                if (json.optString("code") != "Ok") return emptyList()
+
+                val routes = json.optJSONArray("routes") ?: return emptyList()
+                if (routes.length() == 0) return emptyList()
 
                 val geometry = routes.getJSONObject(0).getJSONObject("geometry")
                 val coordinates = geometry.getJSONArray("coordinates")
-
                 val result = mutableListOf<TrackPoint>()
                 for (i in 0 until coordinates.length()) {
                     val coord = coordinates.getJSONArray(i)
@@ -42,27 +101,32 @@ class OsrmClient {
                 }
                 result
             }
-        } catch (e: Exception) {
-            waypoints
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 
-    suspend fun nearest(lat: Double, lon: Double): TrackPoint? = withContext(Dispatchers.IO) {
-        val url = "https://router.project-osrm.org/nearest/v1/foot/$lon,$lat"
-        try {
-            val request = Request.Builder().url(url).get().build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                val body = response.body?.string() ?: return@withContext null
-                val json = JSONObject(body)
-                if (json.optString("code") != "Ok") return@withContext null
-                val waypoints = json.getJSONArray("waypoints")
-                if (waypoints.length() == 0) return@withContext null
-                val location = waypoints.getJSONObject(0).getJSONArray("location")
-                TrackPoint(lat = location.getDouble(1), lon = location.getDouble(0))
+    /**
+     * Full multi-waypoint snap (used for re-snap all / import cleanup).
+     * Caps at 25 waypoints for public OSRM limits; densifies via route geometry.
+     */
+    suspend fun snapToRoad(waypoints: List<TrackPoint>): List<TrackPoint> =
+        withContext(Dispatchers.IO) {
+            if (waypoints.size < 2) return@withContext waypoints
+            if (waypoints.size == 2) return@withContext routeSegment(waypoints[0], waypoints[1])
+
+            // Build path segment by segment so one failure doesn't kill the whole route
+            val result = mutableListOf<TrackPoint>()
+            result.add(waypoints.first())
+            for (i in 1 until waypoints.size) {
+                val segment = routeSegment(waypoints[i - 1], waypoints[i])
+                if (segment.size >= 2) {
+                    // skip first of segment to avoid duplicate joint
+                    result.addAll(segment.drop(1))
+                } else {
+                    result.add(waypoints[i])
+                }
             }
-        } catch (e: Exception) {
-            null
+            result
         }
-    }
 }
