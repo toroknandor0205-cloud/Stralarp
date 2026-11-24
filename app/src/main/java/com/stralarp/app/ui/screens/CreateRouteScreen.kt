@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material.icons.filled.Save
@@ -19,9 +20,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.stralarp.app.data.model.SimulationParams
+import com.stralarp.app.ui.components.GlassButton
+import com.stralarp.app.ui.components.GlassOutlinedButton
+import com.stralarp.app.ui.components.GlassText
 import com.stralarp.app.ui.components.OsmdroidMap
 import com.stralarp.app.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
@@ -39,6 +44,7 @@ fun CreateRouteScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var showSettings by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/gpx+xml")
@@ -46,7 +52,21 @@ fun CreateRouteScreen(
         uri?.let { viewModel.writeToDocument(it) }
     }
 
+    LaunchedEffect(state.message) {
+        state.message?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearMessage()
+        }
+    }
+    LaunchedEffect(state.error) {
+        state.error?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearError()
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Create Route") },
@@ -56,6 +76,9 @@ fun CreateRouteScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.fitRoute() }) {
+                        Icon(Icons.Default.CenterFocusStrong, contentDescription = "Fit route")
+                    }
                     IconButton(onClick = { showSettings = true }) {
                         Icon(Icons.Default.Tune, contentDescription = "Settings")
                     }
@@ -68,19 +91,31 @@ fun CreateRouteScreen(
             )
         },
         bottomBar = {
-            Surface(tonalElevation = 8.dp) {
-                Column(modifier = Modifier.padding(8.dp)) {
+            Surface(
+                color = Color(0xE6121212),
+                tonalElevation = 0.dp
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
                     if (state.currentRoute.points.isNotEmpty()) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("${"%.2f".format(state.currentRoute.totalDistanceKm)} km")
-                            Text("${state.currentRoute.points.size} pts")
+                            Text(
+                                "${"%.2f".format(state.currentRoute.totalDistanceKm)} km",
+                                color = Color.White
+                            )
+                            Text(
+                                "${state.currentRoute.points.size} pts",
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
                             if (state.currentRoute.elevationGain > 0) {
-                                Text("↑${"%.0f".format(state.currentRoute.elevationGain)}m")
+                                Text(
+                                    "↑${"%.0f".format(state.currentRoute.elevationGain)}m",
+                                    color = Color(0xFF00E676)
+                                )
                             }
                         }
                     }
@@ -93,25 +128,25 @@ fun CreateRouteScreen(
                             onClick = { viewModel.undo() },
                             enabled = state.undoStack.isNotEmpty()
                         ) {
-                            Icon(Icons.Default.Undo, contentDescription = "Undo")
+                            Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White)
                         }
                         IconButton(
                             onClick = { viewModel.clearRoute() },
                             enabled = state.currentRoute.points.isNotEmpty()
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Clear")
+                            Icon(Icons.Default.Delete, contentDescription = "Clear", tint = Color.White)
                         }
                         IconButton(
                             onClick = { viewModel.reverseRoute() },
                             enabled = state.currentRoute.points.size >= 2
                         ) {
-                            Icon(Icons.Default.SwapHoriz, contentDescription = "Reverse")
+                            Icon(Icons.Default.SwapHoriz, contentDescription = "Reverse", tint = Color.White)
                         }
                         IconButton(
                             onClick = { viewModel.closeLoop() },
                             enabled = state.currentRoute.points.size >= 2
                         ) {
-                            Icon(Icons.Default.Loop, contentDescription = "Close Loop")
+                            Icon(Icons.Default.Loop, contentDescription = "Close Loop", tint = Color.White)
                         }
                     }
 
@@ -119,26 +154,28 @@ fun CreateRouteScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Button(
+                        GlassButton(
                             onClick = {
                                 val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                                 exportLauncher.launch("Stralarp_$date.gpx")
                             },
                             enabled = state.currentRoute.points.size >= 2,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
                         ) {
-                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Save")
+                            Icon(Icons.Default.Save, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            GlassText("Save")
                         }
-                        OutlinedButton(
+                        GlassOutlinedButton(
                             onClick = { viewModel.exportGpxAndShare(context) },
                             enabled = state.currentRoute.points.size >= 2,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
                         ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Share")
+                            Icon(Icons.Default.Share, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            GlassText("Share")
                         }
                     }
                 }
@@ -150,20 +187,14 @@ fun CreateRouteScreen(
                 modifier = Modifier.fillMaxSize(),
                 points = state.currentRoute.points,
                 onMapClick = { lat, lon -> viewModel.addWaypoint(lat, lon) },
-                fitWhenEmptyToNonEmpty = true
+                fitRouteRequest = state.requestFitRoute,
+                onFitHandled = { viewModel.clearFitRequest() }
             )
 
             if (state.isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            }
-
-            state.error?.let { msg ->
-                Text(
-                    text = msg,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp)
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center),
+                    color = Color(0xFF00E676)
                 )
             }
         }
@@ -192,9 +223,7 @@ private fun SettingsContent(viewModel: MainViewModel) {
     var usePace by remember { mutableStateOf(state.simulationParams.usePace) }
     var pace by remember { mutableStateOf(state.simulationParams.targetPaceMinPerKm.toFloat()) }
     var durationMin by remember {
-        mutableStateOf(
-            ((state.simulationParams.targetDurationSeconds ?: 1800L) / 60f)
-        )
+        mutableStateOf(((state.simulationParams.targetDurationSeconds ?: 1800L) / 60f))
     }
     var variability by remember { mutableStateOf(state.simulationParams.paceVariabilityPercent) }
     var jitter by remember { mutableStateOf(state.simulationParams.injectGpsJitter) }
@@ -239,10 +268,7 @@ private fun SettingsContent(viewModel: MainViewModel) {
                     selected = activityType == type,
                     onClick = { activityType = type },
                     label = {
-                        Text(
-                            type.replace('_', ' '),
-                            style = MaterialTheme.typography.labelSmall
-                        )
+                        Text(type.replace('_', ' '), style = MaterialTheme.typography.labelSmall)
                     }
                 )
             }
