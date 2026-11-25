@@ -23,10 +23,6 @@ import java.text.SimpleDateFormat
 import java.time.LocalTime
 import java.util.Date
 import java.util.Locale
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 data class AppUiState(
     val currentRoute: Route = Route(),
@@ -37,7 +33,9 @@ data class AppUiState(
     val simulationParams: SimulationParams = SimulationParams(),
     val undoStack: List<Route> = emptyList(),
     val requestFitRoute: Boolean = false,
-    val selectedPointIndex: Int? = null
+    val selectedPointIndex: Int? = null,
+    val mapCenterLat: Double = 47.5,
+    val mapCenterLon: Double = 19.0
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -69,6 +67,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateMapCenter(lat: Double, lon: Double) {
+        _uiState.update { it.copy(mapCenterLat = lat, mapCenterLon = lon) }
+    }
+
     private fun pushUndo() {
         val current = _uiState.value.currentRoute
         _uiState.update {
@@ -98,7 +100,62 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         persistSettings()
     }
 
-    /** Tap map: if near existing point → select it; else add waypoint. */
+    fun generateAutoRoute(targetKm: Double, loop: Boolean = true) {
+        viewModelScope.launch {
+            pushUndo()
+            _uiState.update { it.copy(isLoading = true, error = null, message = null, selectedPointIndex = null) }
+            try {
+                val st = _uiState.value
+                val points = repo.generateAutoRoute(
+                    centerLat = st.mapCenterLat,
+                    centerLon = st.mapCenterLon,
+                    targetKm = targetKm,
+                    loop = loop,
+                    activityType = st.currentRoute.activityType
+                )
+                if (points.size < 4) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Could not generate route – try another area or distance"
+                        )
+                    }
+                    return@launch
+                }
+
+                val withEle = try {
+                    repo.enrichElevation(points)
+                } catch (_: Exception) {
+                    points
+                }
+
+                val km = Route(points = withEle).totalDistanceKm
+                val name = "%.0f km Auto".format(targetKm) + " – " +
+                    SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+                _uiState.update {
+                    it.copy(
+                        currentRoute = it.currentRoute.copy(
+                            name = name,
+                            points = withEle,
+                            description = "Auto-generated ~%.1f km".format(km)
+                        ),
+                        isLoading = false,
+                        message = "Generated %.2f km route".format(km),
+                        requestFitRoute = true
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Auto route failed – check network"
+                    )
+                }
+            }
+        }
+    }
+
     fun onMapTap(lat: Double, lon: Double) {
         val pts = _uiState.value.currentRoute.points
         val nearIdx = findNearestIndex(pts, lat, lon, thresholdMeters = 25.0)
@@ -186,7 +243,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         head + tail
                     }
                 } catch (_: Exception) {
-                    updatedPoints // offline elevation fallback
+                    updatedPoints
                 }
 
                 val name = ensureRouteName(_uiState.value.currentRoute.name)
