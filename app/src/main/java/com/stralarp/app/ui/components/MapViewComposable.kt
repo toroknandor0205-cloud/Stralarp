@@ -9,6 +9,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.stralarp.app.data.model.TrackPoint
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -23,7 +26,8 @@ fun OsmdroidMap(
     onMapClick: (Double, Double) -> Unit,
     /** When true, zoom to fit the current route once, then caller should clear the flag. */
     fitRouteRequest: Boolean = false,
-    onFitHandled: () -> Unit = {}
+    onFitHandled: () -> Unit = {},
+    onCenterChanged: (Double, Double) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -53,6 +57,25 @@ fun OsmdroidMap(
             lifecycleOwner.lifecycle.removeObserver(observer)
             mapView.onDetach()
         }
+    }
+
+    // Report center on scroll/zoom
+    LaunchedEffect(Unit) {
+        mapView.addMapListener(object : MapListener {
+            override fun onScroll(event: ScrollEvent?): Boolean {
+                val c = mapView.mapCenter
+                onCenterChanged(c.latitude, c.longitude)
+                return false
+            }
+            override fun onZoom(event: ZoomEvent?): Boolean {
+                val c = mapView.mapCenter
+                onCenterChanged(c.latitude, c.longitude)
+                return false
+            }
+        })
+        // Initial center
+        val c = mapView.mapCenter
+        onCenterChanged(c.latitude, c.longitude)
     }
 
     LaunchedEffect(Unit) {
