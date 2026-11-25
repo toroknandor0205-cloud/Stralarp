@@ -12,11 +12,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Undo
@@ -30,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.stralarp.app.data.model.SimulationParams
+import com.stralarp.app.data.model.computeStats
 import com.stralarp.app.ui.components.ElevationProfile
 import com.stralarp.app.ui.components.GlassButton
 import com.stralarp.app.ui.components.GlassOutlinedButton
@@ -52,6 +55,8 @@ fun CreateRouteScreen(
     val context = LocalContext.current
     var showSettings by remember { mutableStateOf(false) }
     var showAutoDialog by remember { mutableStateOf(false) }
+    var showStats by remember { mutableStateOf(false) }
+    var moveMode by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -77,23 +82,29 @@ fun CreateRouteScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Create Route") },
+                title = {
+                    Text(if (state.isRecording) "Recording…" else "Create Route")
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
+                    if (state.isRecording) {
+                        IconButton(onClick = { viewModel.stopRecording() }) {
+                            Icon(Icons.Default.Stop, "Stop", tint = Color(0xFFFF5252))
+                        }
+                    }
                     IconButton(onClick = { showAutoDialog = true }) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = "Auto Route")
+                        Icon(Icons.Default.AutoAwesome, "Auto Route")
                     }
                     IconButton(onClick = { viewModel.fitRoute() }) {
-                        Icon(Icons.Default.ZoomOutMap, contentDescription = "Fit")
+                        Icon(Icons.Default.ZoomOutMap, "Fit")
                     }
                     IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Default.Tune, contentDescription = "Settings")
+                        Icon(Icons.Default.Tune, "Settings")
                     }
-                    Text("Snap", style = MaterialTheme.typography.labelSmall)
                     Switch(
                         checked = state.snapToRoad,
                         onCheckedChange = { viewModel.setSnapToRoad(it) }
@@ -107,30 +118,23 @@ fun CreateRouteScreen(
                     if (state.currentRoute.points.any { it.elevation != null }) {
                         ElevationProfile(
                             points = state.currentRoute.points,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 6.dp)
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
                         )
                     }
 
                     if (state.currentRoute.points.isNotEmpty()) {
+                        val stats = state.currentRoute.computeStats()
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                "%.2f km".format(state.currentRoute.totalDistanceKm),
-                                color = Color.White
-                            )
-                            Text(
-                                "${state.currentRoute.points.size} pts",
-                                color = Color.White.copy(alpha = 0.8f)
-                            )
-                            if (state.currentRoute.elevationGain > 0) {
-                                Text(
-                                    "↑%.0fm".format(state.currentRoute.elevationGain),
-                                    color = Color(0xFF00E676)
-                                )
+                            Text("%.2f km".format(stats.distanceKm), color = Color.White)
+                            Text("${state.currentRoute.points.size} pts", color = Color.White.copy(0.8f))
+                            if (stats.elevationGain > 0) {
+                                Text("↑%.0fm".format(stats.elevationGain), color = Color(0xFF00E676))
+                            }
+                            TextButton(onClick = { showStats = true }) {
+                                Text("Stats", color = Color(0xFF00E676))
                             }
                         }
                     }
@@ -141,22 +145,27 @@ fun CreateRouteScreen(
                                 .fillMaxWidth()
                                 .padding(vertical = 6.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.12f))
-                                .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .background(Color.White.copy(0.12f))
+                                .border(1.dp, Color.White.copy(0.25f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                "Point #${idx + 1} selected",
-                                color = Color.White,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Text("Pt #${idx + 1}", color = Color.White, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                moveMode = true
+                                viewModel.setInsertMode(false)
+                            }) { Text("Move", color = Color(0xFF82B1FF)) }
+                            TextButton(onClick = {
+                                moveMode = false
+                                viewModel.setInsertMode(true)
+                            }) { Text("Insert", color = Color(0xFFFFD54F)) }
                             TextButton(onClick = { viewModel.deleteSelectedPoint() }) {
-                                Text("Delete", color = Color(0xFFFF5252))
+                                Text("Del", color = Color(0xFFFF5252))
                             }
-                            IconButton(onClick = { viewModel.clearSelection() }) {
-                                Icon(Icons.Default.Close, null, tint = Color.White)
-                            }
+                            IconButton(onClick = {
+                                moveMode = false
+                                viewModel.clearSelection()
+                            }) { Icon(Icons.Default.Close, null, tint = Color.White) }
                         }
                     }
 
@@ -164,29 +173,23 @@ fun CreateRouteScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        IconButton(
-                            onClick = { viewModel.undo() },
-                            enabled = state.undoStack.isNotEmpty()
-                        ) {
+                        IconButton(onClick = { viewModel.undo() }, enabled = state.undoStack.isNotEmpty()) {
                             Icon(Icons.Default.Undo, null, tint = Color.White)
                         }
-                        IconButton(
-                            onClick = { viewModel.clearRoute() },
-                            enabled = state.currentRoute.points.isNotEmpty()
-                        ) {
+                        IconButton(onClick = { viewModel.clearRoute() }, enabled = state.currentRoute.points.isNotEmpty()) {
                             Icon(Icons.Default.Delete, null, tint = Color.White)
                         }
-                        IconButton(
-                            onClick = { viewModel.reverseRoute() },
-                            enabled = state.currentRoute.points.size >= 2
-                        ) {
+                        IconButton(onClick = { viewModel.reverseRoute() }, enabled = state.currentRoute.points.size >= 2) {
                             Icon(Icons.Default.SwapHoriz, null, tint = Color.White)
                         }
+                        IconButton(onClick = { viewModel.closeLoop() }, enabled = state.currentRoute.points.size >= 2) {
+                            Icon(Icons.Default.Loop, null, tint = Color.White)
+                        }
                         IconButton(
-                            onClick = { viewModel.closeLoop() },
+                            onClick = { viewModel.saveCurrentRoute() },
                             enabled = state.currentRoute.points.size >= 2
                         ) {
-                            Icon(Icons.Default.Loop, null, tint = Color.White)
+                            Icon(Icons.Default.Bookmark, null, tint = Color(0xFF00E676))
                         }
                     }
 
@@ -225,9 +228,7 @@ fun CreateRouteScreen(
                         enabled = state.currentRoute.points.size >= 2,
                         modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(12.dp)
-                    ) {
-                        GlassText("Simulate & Share")
-                    }
+                    ) { GlassText("Simulate & Share") }
                 }
             }
         }
@@ -236,10 +237,21 @@ fun CreateRouteScreen(
             OsmdroidMap(
                 modifier = Modifier.fillMaxSize(),
                 points = state.currentRoute.points,
-                onMapClick = { lat, lon -> viewModel.onMapTap(lat, lon) },
+                onMapClick = { lat, lon ->
+                    when {
+                        moveMode && state.selectedPointIndex != null -> {
+                            viewModel.moveSelectedPoint(lat, lon)
+                            moveMode = false
+                        }
+                        else -> viewModel.onMapTap(lat, lon)
+                    }
+                },
                 fitRouteRequest = state.requestFitRoute,
                 onFitHandled = { viewModel.clearFitRequest() },
-                onCenterChanged = { lat, lon -> viewModel.updateMapCenter(lat, lon) }
+                onCenterChanged = { lat, lon -> viewModel.updateMapCenter(lat, lon) },
+                showKmMarkers = true,
+                selectedIndex = state.selectedPointIndex,
+                myLocation = state.myLocation
             )
 
             Box(
@@ -247,15 +259,18 @@ fun CreateRouteScreen(
                     .align(Alignment.TopCenter)
                     .padding(12.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White.copy(alpha = 0.12f))
-                    .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(0.12f))
+                    .border(1.dp, Color.White.copy(0.22f), RoundedCornerShape(14.dp))
                     .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
                 Text(
-                    if (state.selectedPointIndex != null)
-                        "Tap Delete to remove point"
-                    else
-                        "Tap map to add · Auto for generated route",
+                    when {
+                        state.isRecording -> "GPS recording… tap Stop when done"
+                        moveMode -> "Tap map to move selected point"
+                        state.insertMode -> "Tap map to insert after selected"
+                        state.selectedPointIndex != null -> "Move · Insert · Delete"
+                        else -> "Tap map to add · Auto for generated route"
+                    },
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium
                 )
@@ -290,39 +305,48 @@ fun CreateRouteScreen(
             }
         )
     }
+
+    if (showStats) {
+        val s = state.currentRoute.computeStats()
+        AlertDialog(
+            onDismissRequest = { showStats = false },
+            title = { Text("Elevation analysis") },
+            text = {
+                Column {
+                    Text("Distance: %.2f km".format(s.distanceKm))
+                    Text("Gain: %.0f m · Loss: %.0f m".format(s.elevationGain, s.elevationLoss))
+                    Text("Max elev: %s m".format(s.maxElevation?.let { "%.0f".format(it) } ?: "—"))
+                    Text("Min elev: %s m".format(s.minElevation?.let { "%.0f".format(it) } ?: "—"))
+                    Text("Max grade: %.1f%%".format(s.maxGradePercent))
+                    Text("Avg grade: %.1f%%".format(s.avgGradePercent))
+                    Text("Climbing distance: %.0f m".format(s.climbingDistanceM))
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showStats = false }) { Text("Close") }
+            }
+        )
+    }
 }
 
 @Composable
 private fun AutoRouteDialog(
     onDismiss: () -> Unit,
-    onGenerate: (targetKm: Double, loop: Boolean) -> Unit
+    onGenerate: (Double, Boolean) -> Unit
 ) {
     var targetKm by remember { mutableFloatStateOf(5f) }
     var loop by remember { mutableStateOf(true) }
     val presets = listOf(3f, 5f, 8f, 10f, 15f, 21f)
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Auto Route") },
         text = {
             Column {
-                Text(
-                    "Generates a route around the current map center.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("Around current map center.", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(12.dp))
                 Text("Distance: %.0f km".format(targetKm))
-                Slider(
-                    value = targetKm,
-                    onValueChange = { targetKm = it },
-                    valueRange = 2f..30f,
-                    steps = 27
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
+                Slider(value = targetKm, onValueChange = { targetKm = it }, valueRange = 2f..30f, steps = 27)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     presets.forEach { p ->
                         FilterChip(
                             selected = kotlin.math.abs(targetKm - p) < 0.5f,
@@ -331,22 +355,17 @@ private fun AutoRouteDialog(
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Loop (round trip)")
+                    Text("Loop")
                     Spacer(Modifier.weight(1f))
                     Switch(checked = loop, onCheckedChange = { loop = it })
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onGenerate(targetKm.toDouble(), loop) }) {
-                Text("Generate")
-            }
+            Button(onClick = { onGenerate(targetKm.toDouble(), loop) }) { Text("Generate") }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
@@ -372,27 +391,18 @@ private fun SettingsContent(viewModel: MainViewModel) {
     var endTrim by remember { mutableStateOf(100f) }
     var startTimeText by remember {
         mutableStateOf(
-            state.simulationParams.startDateTime.format(
-                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-            )
+            state.simulationParams.startDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
         )
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = 520.dp)
-            .verticalScroll(rememberScrollState())
+        modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState())
     ) {
-        OutlinedTextField(
-            value = name, onValueChange = { name = it },
-            label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true
-        )
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") },
+            modifier = Modifier.fillMaxWidth(), singleLine = true)
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = description, onValueChange = { description = it },
-            label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), singleLine = true
-        )
+        OutlinedTextField(value = description, onValueChange = { description = it },
+            label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         Spacer(Modifier.height(8.dp))
         Text("Activity", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -411,16 +421,12 @@ private fun SettingsContent(viewModel: MainViewModel) {
         ) { Text("Save Metadata") }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
         Text("Start time (yyyy-MM-dd HH:mm)", style = MaterialTheme.typography.labelMedium)
-        OutlinedTextField(
-            value = startTimeText, onValueChange = { startTimeText = it },
-            modifier = Modifier.fillMaxWidth(), singleLine = true
-        )
+        OutlinedTextField(value = startTimeText, onValueChange = { startTimeText = it },
+            modifier = Modifier.fillMaxWidth(), singleLine = true)
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Use Pace")
-            Spacer(Modifier.weight(1f))
+            Text("Use Pace"); Spacer(Modifier.weight(1f))
             Switch(checked = usePace, onCheckedChange = { usePace = it })
         }
         if (usePace) {
@@ -430,48 +436,27 @@ private fun SettingsContent(viewModel: MainViewModel) {
             Text("Duration: %.0f min".format(durationMin))
             Slider(value = durationMin, onValueChange = { durationMin = it }, valueRange = 5f..300f)
         }
-
         Text("Variability: %.0f%%".format(variability))
         Slider(value = variability, onValueChange = { variability = it }, valueRange = 0f..20f)
-
         Text("Sampling: every %.0f s".format(sampling))
-        Slider(
-            value = sampling,
-            onValueChange = { sampling = it },
-            valueRange = 1f..5f,
-            steps = 3
-        )
+        Slider(value = sampling, onValueChange = { sampling = it }, valueRange = 1f..5f, steps = 3)
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("GPS Jitter")
-            Spacer(Modifier.weight(1f))
+            Text("GPS Jitter"); Spacer(Modifier.weight(1f))
             Switch(checked = jitter, onCheckedChange = { jitter = it })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Heart rate in GPX")
-            Spacer(Modifier.weight(1f))
+            Text("Heart rate in GPX"); Spacer(Modifier.weight(1f))
             Switch(checked = hr, onCheckedChange = { hr = it })
         }
-
         Text("Elevation Scale: %.1fx".format(elevScale))
         Slider(value = elevScale, onValueChange = { elevScale = it }, valueRange = 0.5f..2.0f)
-
-        if (state.currentRoute.points.any { it.elevation != null }) {
-            Text("Elevation profile", style = MaterialTheme.typography.labelMedium)
-            ElevationProfile(points = state.currentRoute.points)
-            Spacer(Modifier.height(8.dp))
-        }
 
         Button(
             onClick = {
                 val startDt = try {
-                    LocalDateTime.parse(
-                        startTimeText.trim(),
-                        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-                    )
-                } catch (_: Exception) {
-                    LocalDateTime.now()
-                }
+                    LocalDateTime.parse(startTimeText.trim(), DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                } catch (_: Exception) { LocalDateTime.now() }
                 viewModel.updateSimulationParams(
                     SimulationParams(
                         startDateTime = startDt,
@@ -492,7 +477,6 @@ private fun SettingsContent(viewModel: MainViewModel) {
         ) { Text("Apply Simulation") }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
         Text("Trim Start: %.0f%%".format(startTrim))
         Slider(value = startTrim, onValueChange = { startTrim = it }, valueRange = 0f..90f)
         Text("Trim End: %.0f%%".format(endTrim))
@@ -502,7 +486,6 @@ private fun SettingsContent(viewModel: MainViewModel) {
             enabled = state.currentRoute.points.size >= 3,
             modifier = Modifier.fillMaxWidth()
         ) { Text("Apply Trim") }
-
         Spacer(Modifier.height(8.dp))
         OutlinedButton(
             onClick = { viewModel.reEnrichElevation() },
