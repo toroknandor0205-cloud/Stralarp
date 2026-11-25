@@ -20,7 +20,8 @@ data class SavedSettings(
     val samplingIntervalSeconds: Int = 2,
     val injectGpsJitter: Boolean = true,
     val activityType: String = "running",
-    val injectHeartRate: Boolean = false
+    val injectHeartRate: Boolean = false,
+    val darkTheme: Boolean = true
 )
 
 class UserPrefs(private val context: Context) {
@@ -33,6 +34,7 @@ class UserPrefs(private val context: Context) {
         val JITTER = booleanPreferencesKey("jitter")
         val ACTIVITY = stringPreferencesKey("activity")
         val HR = booleanPreferencesKey("hr")
+        val DARK = booleanPreferencesKey("dark_theme")
     }
 
     val settings: Flow<SavedSettings> = context.dataStore.data.map { p ->
@@ -43,7 +45,8 @@ class UserPrefs(private val context: Context) {
             samplingIntervalSeconds = p[Keys.SAMPLE] ?: 2,
             injectGpsJitter = p[Keys.JITTER] ?: true,
             activityType = p[Keys.ACTIVITY] ?: "running",
-            injectHeartRate = p[Keys.HR] ?: false
+            injectHeartRate = p[Keys.HR] ?: false,
+            darkTheme = p[Keys.DARK] ?: true
         )
     }
 
@@ -56,6 +59,7 @@ class UserPrefs(private val context: Context) {
             p[Keys.JITTER] = s.injectGpsJitter
             p[Keys.ACTIVITY] = s.activityType
             p[Keys.HR] = s.injectHeartRate
+            p[Keys.DARK] = s.darkTheme
         }
     }
 }
