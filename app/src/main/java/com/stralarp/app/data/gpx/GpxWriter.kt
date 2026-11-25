@@ -16,6 +16,7 @@ class GpxWriter {
         writer.appendLine(
             """<gpx version="1.1" creator="${escape(route.creator)}" """ +
                     """xmlns="http://www.topografix.com/GPX/1/1" """ +
+                    """xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" """ +
                     """xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" """ +
                     """xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">"""
         )
@@ -37,6 +38,13 @@ class GpxWriter {
             }
             if (p.time != null) {
                 writer.append("<time>${isoFormatter.format(p.time)}</time>")
+            }
+            if (p.heartRate != null) {
+                writer.append(
+                    "<extensions><gpxtpx:TrackPointExtension>" +
+                            "<gpxtpx:hr>${p.heartRate}</gpxtpx:hr>" +
+                            "</gpxtpx:TrackPointExtension></extensions>"
+                )
             }
             writer.appendLine("</trkpt>")
         }

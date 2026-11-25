@@ -87,6 +87,7 @@ class RouteSimulator {
         val result = mutableListOf<TrackPoint>()
         var currentTime = startInstant
         var lastIdx = 0
+        val baseHr = params.baseHeartRate
 
         var t = 0L
         while (t <= targetDurationSec) {
@@ -109,7 +110,23 @@ class RouteSimulator {
                 p1.elevation + (p2.elevation - p1.elevation) * frac
             } else p1.elevation ?: p2.elevation
 
-            result.add(TrackPoint(lat = lat, lon = lon, elevation = ele, time = currentTime))
+            // Mild HR variation + uphill bump
+            val hr = if (params.injectHeartRate) {
+                val elevDelta = (ele ?: 0.0) - (points.first().elevation ?: 0.0)
+                val bump = (elevDelta / 50.0).toInt().coerceIn(-10, 25)
+                val noise = Random.nextInt(-4, 5)
+                (baseHr + bump + noise).coerceIn(90, 195)
+            } else null
+
+            result.add(
+                TrackPoint(
+                    lat = lat,
+                    lon = lon,
+                    elevation = ele,
+                    time = currentTime,
+                    heartRate = hr
+                )
+            )
 
             currentTime = currentTime.plusSeconds(interval.toLong())
             t += interval
@@ -117,7 +134,10 @@ class RouteSimulator {
 
         if (result.isNotEmpty() && points.isNotEmpty()) {
             val last = points.last()
-            result[result.lastIndex] = last.copy(time = startInstant.plusSeconds(targetDurationSec))
+            result[result.lastIndex] = last.copy(
+                time = startInstant.plusSeconds(targetDurationSec),
+                heartRate = result.last().heartRate
+            )
         }
 
         return result
