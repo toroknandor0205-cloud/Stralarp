@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Loop
@@ -50,6 +51,7 @@ fun CreateRouteScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var showSettings by remember { mutableStateOf(false) }
+    var showAutoDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -82,6 +84,9 @@ fun CreateRouteScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showAutoDialog = true }) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = "Auto Route")
+                    }
                     IconButton(onClick = { viewModel.fitRoute() }) {
                         Icon(Icons.Default.ZoomOutMap, contentDescription = "Fit")
                     }
@@ -233,7 +238,8 @@ fun CreateRouteScreen(
                 points = state.currentRoute.points,
                 onMapClick = { lat, lon -> viewModel.onMapTap(lat, lon) },
                 fitRouteRequest = state.requestFitRoute,
-                onFitHandled = { viewModel.clearFitRequest() }
+                onFitHandled = { viewModel.clearFitRequest() },
+                onCenterChanged = { lat, lon -> viewModel.updateMapCenter(lat, lon) }
             )
 
             Box(
@@ -249,7 +255,7 @@ fun CreateRouteScreen(
                     if (state.selectedPointIndex != null)
                         "Tap Delete to remove point"
                     else
-                        "Tap map to add · tap a point to select",
+                        "Tap map to add · Auto for generated route",
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium
                 )
@@ -274,6 +280,74 @@ fun CreateRouteScreen(
             }
         )
     }
+
+    if (showAutoDialog) {
+        AutoRouteDialog(
+            onDismiss = { showAutoDialog = false },
+            onGenerate = { km, loop ->
+                showAutoDialog = false
+                viewModel.generateAutoRoute(km, loop)
+            }
+        )
+    }
+}
+
+@Composable
+private fun AutoRouteDialog(
+    onDismiss: () -> Unit,
+    onGenerate: (targetKm: Double, loop: Boolean) -> Unit
+) {
+    var targetKm by remember { mutableFloatStateOf(5f) }
+    var loop by remember { mutableStateOf(true) }
+    val presets = listOf(3f, 5f, 8f, 10f, 15f, 21f)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Auto Route") },
+        text = {
+            Column {
+                Text(
+                    "Generates a route around the current map center.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("Distance: %.0f km".format(targetKm))
+                Slider(
+                    value = targetKm,
+                    onValueChange = { targetKm = it },
+                    valueRange = 2f..30f,
+                    steps = 27
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    presets.forEach { p ->
+                        FilterChip(
+                            selected = kotlin.math.abs(targetKm - p) < 0.5f,
+                            onClick = { targetKm = p },
+                            label = { Text("%.0f".format(p), style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Loop (round trip)")
+                    Spacer(Modifier.weight(1f))
+                    Switch(checked = loop, onCheckedChange = { loop = it })
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onGenerate(targetKm.toDouble(), loop) }) {
+                Text("Generate")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
