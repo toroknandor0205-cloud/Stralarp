@@ -9,6 +9,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.stralarp.app.data.model.TrackPoint
+import com.stralarp.app.data.model.kmMarkerIndices
+import com.stralarp.app.data.model.Route
 import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
@@ -24,10 +26,12 @@ fun OsmdroidMap(
     modifier: Modifier = Modifier,
     points: List<TrackPoint>,
     onMapClick: (Double, Double) -> Unit,
-    /** When true, zoom to fit the current route once, then caller should clear the flag. */
     fitRouteRequest: Boolean = false,
     onFitHandled: () -> Unit = {},
-    onCenterChanged: (Double, Double) -> Unit = { _, _ -> }
+    onCenterChanged: (Double, Double) -> Unit = { _, _ -> },
+    showKmMarkers: Boolean = true,
+    selectedIndex: Int? = null,
+    myLocation: TrackPoint? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -59,7 +63,6 @@ fun OsmdroidMap(
         }
     }
 
-    // Report center on scroll/zoom
     LaunchedEffect(Unit) {
         mapView.addMapListener(object : MapListener {
             override fun onScroll(event: ScrollEvent?): Boolean {
@@ -73,7 +76,6 @@ fun OsmdroidMap(
                 return false
             }
         })
-        // Initial center
         val c = mapView.mapCenter
         onCenterChanged(c.latitude, c.longitude)
     }
@@ -89,10 +91,9 @@ fun OsmdroidMap(
         })
     }
 
-    // Draw route — never auto-zoom on every point
-    LaunchedEffect(points) {
+    LaunchedEffect(points, selectedIndex, showKmMarkers, myLocation) {
         mapView.overlays.removeAll {
-            it is Polyline || (it is Marker && it.title in listOf("Start", "Finish"))
+            it is Polyline || it is Marker
         }
 
         if (points.isNotEmpty()) {
@@ -117,11 +118,42 @@ fun OsmdroidMap(
                     title = "Finish"
                 })
             }
+
+            selectedIndex?.let { idx ->
+                if (idx in geoPoints.indices) {
+                    mapView.overlays.add(Marker(mapView).apply {
+                        position = geoPoints[idx]
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        title = "Selected"
+                    })
+                }
+            }
+
+            if (showKmMarkers && points.size >= 2) {
+                val route = Route(points = points)
+                for ((idx, km) in route.kmMarkerIndices()) {
+                    if (idx in geoPoints.indices) {
+                        mapView.overlays.add(Marker(mapView).apply {
+                            position = geoPoints[idx]
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                            title = "${km} km"
+                        })
+                    }
+                }
+            }
         }
+
+        myLocation?.let { loc ->
+            mapView.overlays.add(Marker(mapView).apply {
+                position = GeoPoint(loc.lat, loc.lon)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                title = "Me"
+            })
+        }
+
         mapView.invalidate()
     }
 
-    // Fit only when requested (Fit button / import)
     LaunchedEffect(fitRouteRequest, points) {
         if (fitRouteRequest && points.isNotEmpty()) {
             try {
