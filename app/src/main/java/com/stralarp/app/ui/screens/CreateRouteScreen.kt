@@ -114,7 +114,7 @@ fun CreateRouteScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                "${\"%.2f\".format(state.currentRoute.totalDistanceKm)} km",
+                                "%.2f km".format(state.currentRoute.totalDistanceKm),
                                 color = Color.White
                             )
                             Text(
@@ -123,14 +123,13 @@ fun CreateRouteScreen(
                             )
                             if (state.currentRoute.elevationGain > 0) {
                                 Text(
-                                    "↑${\"%.0f\".format(state.currentRoute.elevationGain)}m",
+                                    "↑%.0fm".format(state.currentRoute.elevationGain),
                                     color = Color(0xFF00E676)
                                 )
                             }
                         }
                     }
 
-                    // Selected point delete chip
                     state.selectedPointIndex?.let { idx ->
                         Row(
                             modifier = Modifier
@@ -237,7 +236,6 @@ fun CreateRouteScreen(
                 onFitHandled = { viewModel.clearFitRequest() }
             )
 
-            // Glass hint panel
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -352,17 +350,17 @@ private fun SettingsContent(viewModel: MainViewModel) {
             Switch(checked = usePace, onCheckedChange = { usePace = it })
         }
         if (usePace) {
-            Text("Pace: ${\"%.1f\".format(pace)} min/km")
+            Text("Pace: %.1f min/km".format(pace))
             Slider(value = pace, onValueChange = { pace = it }, valueRange = 3f..12f)
         } else {
-            Text("Duration: ${\"%.0f\".format(durationMin)} min")
+            Text("Duration: %.0f min".format(durationMin))
             Slider(value = durationMin, onValueChange = { durationMin = it }, valueRange = 5f..300f)
         }
 
-        Text("Variability: ${\"%.0f\".format(variability)}%")
+        Text("Variability: %.0f%%".format(variability))
         Slider(value = variability, onValueChange = { variability = it }, valueRange = 0f..20f)
 
-        Text("Sampling: every ${\"%.0f\".format(sampling)} s")
+        Text("Sampling: every %.0f s".format(sampling))
         Slider(
             value = sampling,
             onValueChange = { sampling = it },
@@ -381,7 +379,7 @@ private fun SettingsContent(viewModel: MainViewModel) {
             Switch(checked = hr, onCheckedChange = { hr = it })
         }
 
-        Text("Elevation Scale: ${\"%.1f\".format(elevScale)}x")
+        Text("Elevation Scale: %.1fx".format(elevScale))
         Slider(value = elevScale, onValueChange = { elevScale = it }, valueRange = 0.5f..2.0f)
 
         if (state.currentRoute.points.any { it.elevation != null }) {
@@ -421,9 +419,9 @@ private fun SettingsContent(viewModel: MainViewModel) {
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-        Text("Trim Start: ${\"%.0f\".format(startTrim)}%")
+        Text("Trim Start: %.0f%%".format(startTrim))
         Slider(value = startTrim, onValueChange = { startTrim = it }, valueRange = 0f..90f)
-        Text("Trim End: ${\"%.0f\".format(endTrim)}%")
+        Text("Trim End: %.0f%%".format(endTrim))
         Slider(value = endTrim, onValueChange = { endTrim = it }, valueRange = 10f..100f)
         Button(
             onClick = { viewModel.trimRoute(startTrim, endTrim) },
