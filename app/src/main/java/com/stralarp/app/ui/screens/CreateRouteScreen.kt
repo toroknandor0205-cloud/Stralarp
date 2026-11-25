@@ -3,23 +3,15 @@ package com.stralarp.app.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material.icons.filled.Save
@@ -28,39 +20,16 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.ZoomOutMap
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.stralarp.app.data.model.SimulationParams
+import com.stralarp.app.ui.components.ElevationProfile
 import com.stralarp.app.ui.components.GlassButton
 import com.stralarp.app.ui.components.GlassOutlinedButton
 import com.stralarp.app.ui.components.GlassText
@@ -90,16 +59,14 @@ fun CreateRouteScreen(
     }
 
     LaunchedEffect(state.message) {
-        val msg = state.message
-        if (msg != null) {
-            snackbarHostState.showSnackbar(msg)
+        state.message?.let {
+            snackbarHostState.showSnackbar(it)
             viewModel.clearMessage()
         }
     }
     LaunchedEffect(state.error) {
-        val err = state.error
-        if (err != null) {
-            snackbarHostState.showSnackbar(err)
+        state.error?.let {
+            snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
     }
@@ -116,7 +83,7 @@ fun CreateRouteScreen(
                 },
                 actions = {
                     IconButton(onClick = { viewModel.fitRoute() }) {
-                        Icon(Icons.Default.ZoomOutMap, contentDescription = "Fit route")
+                        Icon(Icons.Default.ZoomOutMap, contentDescription = "Fit")
                     }
                     IconButton(onClick = { showSettings = true }) {
                         Icon(Icons.Default.Tune, contentDescription = "Settings")
@@ -132,11 +99,18 @@ fun CreateRouteScreen(
         bottomBar = {
             Surface(color = Color(0xE6121212)) {
                 Column(modifier = Modifier.padding(10.dp)) {
-                    if (state.currentRoute.points.isNotEmpty()) {
-                        Row(
+                    if (state.currentRoute.points.any { it.elevation != null }) {
+                        ElevationProfile(
+                            points = state.currentRoute.points,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                                .padding(bottom = 6.dp)
+                        )
+                    }
+
+                    if (state.currentRoute.points.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
@@ -156,6 +130,32 @@ fun CreateRouteScreen(
                         }
                     }
 
+                    // Selected point delete chip
+                    state.selectedPointIndex?.let { idx ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Point #${idx + 1} selected",
+                                color = Color.White,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { viewModel.deleteSelectedPoint() }) {
+                                Text("Delete", color = Color(0xFFFF5252))
+                            }
+                            IconButton(onClick = { viewModel.clearSelection() }) {
+                                Icon(Icons.Default.Close, null, tint = Color.White)
+                            }
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
@@ -164,25 +164,25 @@ fun CreateRouteScreen(
                             onClick = { viewModel.undo() },
                             enabled = state.undoStack.isNotEmpty()
                         ) {
-                            Icon(Icons.Default.Undo, contentDescription = "Undo", tint = Color.White)
+                            Icon(Icons.Default.Undo, null, tint = Color.White)
                         }
                         IconButton(
                             onClick = { viewModel.clearRoute() },
                             enabled = state.currentRoute.points.isNotEmpty()
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Clear", tint = Color.White)
+                            Icon(Icons.Default.Delete, null, tint = Color.White)
                         }
                         IconButton(
                             onClick = { viewModel.reverseRoute() },
                             enabled = state.currentRoute.points.size >= 2
                         ) {
-                            Icon(Icons.Default.SwapHoriz, contentDescription = "Reverse", tint = Color.White)
+                            Icon(Icons.Default.SwapHoriz, null, tint = Color.White)
                         }
                         IconButton(
                             onClick = { viewModel.closeLoop() },
                             enabled = state.currentRoute.points.size >= 2
                         ) {
-                            Icon(Icons.Default.Loop, contentDescription = "Close Loop", tint = Color.White)
+                            Icon(Icons.Default.Loop, null, tint = Color.White)
                         }
                     }
 
@@ -197,22 +197,32 @@ fun CreateRouteScreen(
                             },
                             enabled = state.currentRoute.points.size >= 2,
                             modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                            contentPadding = PaddingValues(12.dp)
                         ) {
-                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(Icons.Default.Save, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
                             GlassText("Save")
                         }
                         GlassOutlinedButton(
                             onClick = { viewModel.exportGpxAndShare(context) },
                             enabled = state.currentRoute.points.size >= 2,
                             modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                            contentPadding = PaddingValues(12.dp)
                         ) {
-                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(Icons.Default.Share, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
                             GlassText("Share")
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    GlassButton(
+                        onClick = { viewModel.simulateAndShare(context) },
+                        enabled = state.currentRoute.points.size >= 2,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(12.dp)
+                    ) {
+                        GlassText("Simulate & Share")
                     }
                 }
             }
@@ -222,10 +232,30 @@ fun CreateRouteScreen(
             OsmdroidMap(
                 modifier = Modifier.fillMaxSize(),
                 points = state.currentRoute.points,
-                onMapClick = { lat, lon -> viewModel.addWaypoint(lat, lon) },
+                onMapClick = { lat, lon -> viewModel.onMapTap(lat, lon) },
                 fitRouteRequest = state.requestFitRoute,
                 onFitHandled = { viewModel.clearFitRequest() }
             )
+
+            // Glass hint panel
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(12.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    if (state.selectedPointIndex != null)
+                        "Tap Delete to remove point"
+                    else
+                        "Tap map to add · tap a point to select",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
 
             if (state.isLoading) {
                 CircularProgressIndicator(
@@ -240,11 +270,9 @@ fun CreateRouteScreen(
         AlertDialog(
             onDismissRequest = { showSettings = false },
             title = { Text("Route Settings") },
-            text = { SettingsContent(viewModel = viewModel) },
+            text = { SettingsContent(viewModel) },
             confirmButton = {
-                TextButton(onClick = { showSettings = false }) {
-                    Text("Close")
-                }
+                TextButton(onClick = { showSettings = false }) { Text("Close") }
             }
         )
     }
@@ -262,7 +290,11 @@ private fun SettingsContent(viewModel: MainViewModel) {
         mutableStateOf(((state.simulationParams.targetDurationSeconds ?: 1800L) / 60f))
     }
     var variability by remember { mutableStateOf(state.simulationParams.paceVariabilityPercent) }
+    var sampling by remember {
+        mutableStateOf(state.simulationParams.samplingIntervalSeconds.toFloat())
+    }
     var jitter by remember { mutableStateOf(state.simulationParams.injectGpsJitter) }
+    var hr by remember { mutableStateOf(state.simulationParams.injectHeartRate) }
     var elevScale by remember { mutableStateOf(state.simulationParams.scaleElevation) }
     var startTrim by remember { mutableStateOf(0f) }
     var endTrim by remember { mutableStateOf(100f) }
@@ -281,62 +313,46 @@ private fun SettingsContent(viewModel: MainViewModel) {
             .verticalScroll(rememberScrollState())
     ) {
         OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("Name") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            value = name, onValueChange = { name = it },
+            label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
         OutlinedTextField(
-            value = description,
-            onValueChange = { description = it },
-            label = { Text("Description") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            value = description, onValueChange = { description = it },
+            label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), singleLine = true
         )
-        Spacer(modifier = Modifier.height(8.dp))
-
+        Spacer(modifier.height(8.dp))
         Text("Activity", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             listOf("running", "trail_running", "cycling", "walking").forEach { type ->
                 FilterChip(
                     selected = activityType == type,
                     onClick = { activityType = type },
-                    label = {
-                        Text(type.replace('_', ' '), style = MaterialTheme.typography.labelSmall)
-                    }
+                    label = { Text(type.replace('_', ' '), style = MaterialTheme.typography.labelSmall) }
                 )
             }
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier.height(8.dp))
         Button(
             onClick = { viewModel.updateMetadata(name, description, activityType) },
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Save Metadata")
-        }
+        ) { Text("Save Metadata") }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
         Text("Start time (yyyy-MM-dd HH:mm)", style = MaterialTheme.typography.labelMedium)
         OutlinedTextField(
-            value = startTimeText,
-            onValueChange = { startTimeText = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
+            value = startTimeText, onValueChange = { startTimeText = it },
+            modifier = Modifier.fillMaxWidth(), singleLine = true
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Use Pace")
             Spacer(Modifier.weight(1f))
             Switch(checked = usePace, onCheckedChange = { usePace = it })
         }
-
         if (usePace) {
-            Text("Target Pace: ${"%.1f".format(pace)} min/km")
+            Text("Pace: ${"%.1f".format(pace)} min/km")
             Slider(value = pace, onValueChange = { pace = it }, valueRange = 3f..12f)
         } else {
             Text("Duration: ${"%.0f".format(durationMin)} min")
@@ -346,14 +362,33 @@ private fun SettingsContent(viewModel: MainViewModel) {
         Text("Variability: ${"%.0f".format(variability)}%")
         Slider(value = variability, onValueChange = { variability = it }, valueRange = 0f..20f)
 
+        Text("Sampling: every ${"%.0f".format(sampling)} s")
+        Slider(
+            value = sampling,
+            onValueChange = { sampling = it },
+            valueRange = 1f..5f,
+            steps = 3
+        )
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("GPS Jitter")
             Spacer(modifier.weight(1f))
             Switch(checked = jitter, onCheckedChange = { jitter = it })
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Heart rate in GPX")
+            Spacer(modifier.weight(1f))
+            Switch(checked = hr, onCheckedChange = { hr = it })
+        }
 
         Text("Elevation Scale: ${"%.1f".format(elevScale)}x")
         Slider(value = elevScale, onValueChange = { elevScale = it }, valueRange = 0.5f..2.0f)
+
+        if (state.currentRoute.points.any { it.elevation != null }) {
+            Text("Elevation profile", style = MaterialTheme.typography.labelMedium)
+            ElevationProfile(points = state.currentRoute.points)
+            Spacer(Modifier.height(8.dp))
+        }
 
         Button(
             onClick = {
@@ -372,17 +407,17 @@ private fun SettingsContent(viewModel: MainViewModel) {
                         targetDurationSeconds = (durationMin * 60).toLong(),
                         usePace = usePace,
                         paceVariabilityPercent = variability,
+                        samplingIntervalSeconds = sampling.toInt().coerceIn(1, 5),
                         injectGpsJitter = jitter,
-                        scaleElevation = elevScale
+                        scaleElevation = elevScale,
+                        injectHeartRate = hr
                     )
                 )
                 viewModel.runSimulation()
             },
             enabled = state.currentRoute.points.size >= 2,
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Apply Simulation")
-        }
+        ) { Text("Apply Simulation") }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
@@ -390,22 +425,17 @@ private fun SettingsContent(viewModel: MainViewModel) {
         Slider(value = startTrim, onValueChange = { startTrim = it }, valueRange = 0f..90f)
         Text("Trim End: ${"%.0f".format(endTrim)}%")
         Slider(value = endTrim, onValueChange = { endTrim = it }, valueRange = 10f..100f)
-
         Button(
             onClick = { viewModel.trimRoute(startTrim, endTrim) },
             enabled = state.currentRoute.points.size >= 3,
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Apply Trim")
-        }
+        ) { Text("Apply Trim") }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier.height(8.dp))
         OutlinedButton(
             onClick = { viewModel.reEnrichElevation() },
             enabled = state.currentRoute.points.isNotEmpty(),
             modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Re-fetch Elevation")
-        }
+        ) { Text("Re-fetch Elevation") }
     }
 }
