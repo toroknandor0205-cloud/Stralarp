@@ -7,6 +7,7 @@ import com.stralarp.app.data.gpx.GpxWriter
 import com.stralarp.app.data.model.Route
 import com.stralarp.app.data.model.SimulationParams
 import com.stralarp.app.data.model.TrackPoint
+import com.stralarp.app.data.network.AutoRouteGenerator
 import com.stralarp.app.data.network.ElevationClient
 import com.stralarp.app.data.network.OsrmClient
 import com.stralarp.app.data.simulation.RouteSimulator
@@ -22,6 +23,7 @@ class RouteRepository(private val context: Context) {
     private val simulator = RouteSimulator()
     private val parser = GpxParser()
     private val writer = GpxWriter()
+    private val autoGen = AutoRouteGenerator(osrm)
 
     suspend fun snapWaypoints(waypoints: List<TrackPoint>): List<TrackPoint> {
         return osrm.snapToRoad(waypoints)
@@ -37,6 +39,16 @@ class RouteRepository(private val context: Context) {
 
     suspend fun enrichElevation(points: List<TrackPoint>): List<TrackPoint> {
         return elevation.enrichWithElevation(points)
+    }
+
+    suspend fun generateAutoRoute(
+        centerLat: Double,
+        centerLon: Double,
+        targetKm: Double,
+        loop: Boolean = true,
+        activityType: String = "running"
+    ): List<TrackPoint> {
+        return autoGen.generate(centerLat, centerLon, targetKm, loop, activityType)
     }
 
     suspend fun parseGpx(uri: Uri): Route = withContext(Dispatchers.IO) {
