@@ -6,6 +6,9 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 class OsrmClient {
@@ -58,7 +61,7 @@ class OsrmClient {
      */
     suspend fun routeSegment(from: TrackPoint, to: TrackPoint): List<TrackPoint> =
         withContext(Dispatchers.IO) {
-            for (profile in listOf("foot", "walking")) {
+            for (profile in listOf("foot", "walking", "driving")) {
                 val result = routeSegmentWithProfile(from, to, profile)
                 if (result.size >= 2) return@withContext result
             }
@@ -71,11 +74,11 @@ class OsrmClient {
         to: TrackPoint,
         profile: String
     ): List<TrackPoint> {
-        // radiuses help OSRM snap nearby points onto the network
+        // Larger radiuses help snap when user taps slightly off-road
         val url =
             "https://router.project-osrm.org/route/v1/$profile/" +
                     "${from.lon},${from.lat};${to.lon},${to.lat}" +
-                    "?overview=full&geometries=geojson&steps=false&radiuses=50;50"
+                    "?overview=full&geometries=geojson&steps=false&radiuses=80;80"
 
         return try {
             val request = Request.Builder()
@@ -115,13 +118,11 @@ class OsrmClient {
             if (waypoints.size < 2) return@withContext waypoints
             if (waypoints.size == 2) return@withContext routeSegment(waypoints[0], waypoints[1])
 
-            // Build path segment by segment so one failure doesn't kill the whole route
             val result = mutableListOf<TrackPoint>()
             result.add(waypoints.first())
             for (i in 1 until waypoints.size) {
                 val segment = routeSegment(waypoints[i - 1], waypoints[i])
                 if (segment.size >= 2) {
-                    // skip first of segment to avoid duplicate joint
                     result.addAll(segment.drop(1))
                 } else {
                     result.add(waypoints[i])
@@ -129,4 +130,13 @@ class OsrmClient {
             }
             result
         }
+
+    companion object {
+        fun friendlyNetworkError(e: Throwable): String = when (e) {
+            is UnknownHostException -> "No internet – routing offline. Points placed without road snap."
+            is SocketTimeoutException -> "Routing timeout – try again or turn Snap off."
+            is IOException -> "Network error – check connection. Points may be off-road."
+            else -> e.message ?: "Routing failed"
+        }
+    }
 }

@@ -37,6 +37,90 @@ class RouteRepository(private val context: Context) {
         return osrm.routeSegment(from, to)
     }
 
+    /**
+     * After moving or inserting a point at [index], rebuild the road geometry
+     * for the neighboring segments so the path stays on roads.
+     * [points] must already contain the new/moved point at [index].
+     */
+    suspend fun rebuildAroundIndex(
+        points: List<TrackPoint>,
+        index: Int,
+        snap: Boolean
+    ): List<TrackPoint> {
+        if (points.isEmpty() || index !in points.indices) return points
+        if (!snap || points.size < 2) return points
+
+        val result = mutableListOf<TrackPoint>()
+
+        // Keep everything before the previous neighbor
+        val prevIdx = index - 1
+        if (prevIdx < 0) {
+            // First point moved/inserted: route from this point to next only
+            result.add(points[0])
+            if (points.size >= 2) {
+                val seg = osrm.routeSegment(points[0], points[1])
+                if (seg.size >= 2) {
+                    result.clear()
+                    result.addAll(seg)
+                } else {
+                    result.addAll(points.drop(1))
+                }
+                // Keep rest after index+1 unchanged
+                if (points.size > 2) {
+                    result.addAll(points.drop(2))
+                }
+            }
+            return densifyOrKeep(result)
+        }
+
+        // Copy points up to (but not including) prev
+        result.addAll(points.subList(0, prevIdx))
+
+        val prev = points[prevIdx]
+        val current = points[index]
+        val nextIdx = index + 1
+
+        // Segment prev -> current
+        val seg1 = osrm.routeSegment(prev, current)
+        if (seg1.size >= 2) {
+            result.addAll(seg1)
+        } else {
+            result.add(prev)
+            result.add(current)
+        }
+
+        // Segment current -> next (if any)
+        if (nextIdx < points.size) {
+            val next = points[nextIdx]
+            // Avoid duplicating current (already last of seg1)
+            val from = result.lastOrNull() ?: current
+            val seg2 = osrm.routeSegment(from, next)
+            if (seg2.size >= 2) {
+                result.addAll(seg2.drop(1))
+            } else {
+                result.add(next)
+            }
+            // Rest of the route after next
+            if (nextIdx + 1 < points.size) {
+                result.addAll(points.subList(nextIdx + 1, points.size))
+            }
+        }
+
+        return densifyOrKeep(result)
+    }
+
+    private fun densifyOrKeep(points: List<TrackPoint>): List<TrackPoint> {
+        // Drop near-duplicate consecutive points (< 1.5 m)
+        if (points.size < 2) return points
+        val cleaned = mutableListOf(points.first())
+        for (i in 1 until points.size) {
+            if (cleaned.last().distanceTo(points[i]) >= 1.5) {
+                cleaned.add(points[i])
+            }
+        }
+        return cleaned
+    }
+
     suspend fun enrichElevation(points: List<TrackPoint>): List<TrackPoint> {
         return elevation.enrichWithElevation(points)
     }
