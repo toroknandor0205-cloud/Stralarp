@@ -56,7 +56,6 @@ fun CreateRouteScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showAutoDialog by remember { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
-    var moveMode by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -105,10 +104,6 @@ fun CreateRouteScreen(
                     IconButton(onClick = { showSettings = true }) {
                         Icon(Icons.Default.Tune, "Settings")
                     }
-                    Switch(
-                        checked = state.snapToRoad,
-                        onCheckedChange = { viewModel.setSnapToRoad(it) }
-                    )
                 }
             )
         },
@@ -126,7 +121,8 @@ fun CreateRouteScreen(
                         val stats = state.currentRoute.computeStats()
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("%.2f km".format(stats.distanceKm), color = Color.White)
                             Text("${state.currentRoute.points.size} pts", color = Color.White.copy(0.8f))
@@ -147,25 +143,28 @@ fun CreateRouteScreen(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(Color.White.copy(0.12f))
                                 .border(1.dp, Color.White.copy(0.25f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("Pt #${idx + 1}", color = Color.White, modifier = Modifier.weight(1f))
-                            TextButton(onClick = {
-                                moveMode = true
-                                viewModel.setInsertMode(false)
-                            }) { Text("Move", color = Color(0xFF82B1FF)) }
-                            TextButton(onClick = {
-                                moveMode = false
-                                viewModel.setInsertMode(true)
-                            }) { Text("Insert", color = Color(0xFFFFD54F)) }
+                            FilterChip(
+                                selected = state.moveMode,
+                                onClick = { viewModel.setMoveMode(!state.moveMode) },
+                                label = { Text("Move") }
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            FilterChip(
+                                selected = state.insertMode,
+                                onClick = { viewModel.setInsertMode(!state.insertMode) },
+                                label = { Text("Insert") }
+                            )
+                            Spacer(Modifier.width(4.dp))
                             TextButton(onClick = { viewModel.deleteSelectedPoint() }) {
                                 Text("Del", color = Color(0xFFFF5252))
                             }
-                            IconButton(onClick = {
-                                moveMode = false
-                                viewModel.clearSelection()
-                            }) { Icon(Icons.Default.Close, null, tint = Color.White) }
+                            IconButton(onClick = { viewModel.clearSelection() }) {
+                                Icon(Icons.Default.Close, null, tint = Color.White)
+                            }
                         }
                     }
 
@@ -208,7 +207,7 @@ fun CreateRouteScreen(
                         ) {
                             Icon(Icons.Default.Save, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
-                            GlassText("Save")
+                            GlassText("Export")
                         }
                         GlassOutlinedButton(
                             onClick = { viewModel.exportGpxAndShare(context) },
@@ -222,7 +221,7 @@ fun CreateRouteScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(Modifier.height(6.dp))
                     GlassButton(
                         onClick = { viewModel.simulateAndShare(context) },
                         enabled = state.currentRoute.points.size >= 2,
@@ -237,15 +236,7 @@ fun CreateRouteScreen(
             OsmdroidMap(
                 modifier = Modifier.fillMaxSize(),
                 points = state.currentRoute.points,
-                onMapClick = { lat, lon ->
-                    when {
-                        moveMode && state.selectedPointIndex != null -> {
-                            viewModel.moveSelectedPoint(lat, lon)
-                            moveMode = false
-                        }
-                        else -> viewModel.onMapTap(lat, lon)
-                    }
-                },
+                onMapClick = { lat, lon -> viewModel.onMapTap(lat, lon) },
                 fitRouteRequest = state.requestFitRoute,
                 onFitHandled = { viewModel.clearFitRequest() },
                 onCenterChanged = { lat, lon -> viewModel.updateMapCenter(lat, lon) },
@@ -266,9 +257,9 @@ fun CreateRouteScreen(
                 Text(
                     when {
                         state.isRecording -> "GPS recording… tap Stop when done"
-                        moveMode -> "Tap map to move selected point"
+                        state.moveMode -> "Tap map to move selected point"
                         state.insertMode -> "Tap map to insert after selected"
-                        state.selectedPointIndex != null -> "Move · Insert · Delete"
+                        state.selectedPointIndex != null -> "Move · Insert · Delete selected point"
                         else -> "Tap map to add · Auto for generated route"
                     },
                     color = Color.White,
@@ -398,6 +389,12 @@ private fun SettingsContent(viewModel: MainViewModel) {
     Column(
         modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState())
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Snap to road")
+            Spacer(Modifier.weight(1f))
+            Switch(checked = state.snapToRoad, onCheckedChange = { viewModel.setSnapToRoad(it) })
+        }
+        Spacer(Modifier.height(8.dp))
         OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") },
             modifier = Modifier.fillMaxWidth(), singleLine = true)
         Spacer(Modifier.height(8.dp))
