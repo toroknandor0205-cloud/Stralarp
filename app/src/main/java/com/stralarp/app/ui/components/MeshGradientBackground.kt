@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.Color
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Soft animated mesh-style gradient background (dark athletic look). */
+/** Soft animated mesh: white – gray – black (monochrome athletic look). */
 @Composable
 fun MeshGradientBackground(
     modifier: Modifier = Modifier
@@ -22,7 +22,7 @@ fun MeshGradientBackground(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(28000, easing = LinearEasing),
+            animation = tween(32000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "meshAngle"
@@ -30,34 +30,38 @@ fun MeshGradientBackground(
 
     val rad = Math.toRadians(t.toDouble()).toFloat()
     val c1 = Offset(
-        x = 0.25f + 0.12f * cos(rad),
-        y = 0.20f + 0.10f * sin(rad * 0.9f)
+        x = 0.22f + 0.14f * cos(rad),
+        y = 0.18f + 0.11f * sin(rad * 0.9f)
     )
     val c2 = Offset(
-        x = 0.75f + 0.10f * cos(rad * 1.1f + 1f),
-        y = 0.35f + 0.12f * sin(rad * 0.8f)
+        x = 0.78f + 0.11f * cos(rad * 1.1f + 1f),
+        y = 0.32f + 0.13f * sin(rad * 0.8f)
     )
     val c3 = Offset(
-        x = 0.40f + 0.15f * cos(rad * 0.7f + 2f),
-        y = 0.78f + 0.08f * sin(rad * 1.2f)
+        x = 0.38f + 0.16f * cos(rad * 0.7f + 2f),
+        y = 0.76f + 0.09f * sin(rad * 1.2f)
     )
     val c4 = Offset(
-        x = 0.85f + 0.08f * cos(rad * 0.95f + 0.5f),
-        y = 0.85f + 0.10f * sin(rad * 0.6f)
+        x = 0.88f + 0.09f * cos(rad * 0.95f + 0.5f),
+        y = 0.88f + 0.10f * sin(rad * 0.6f)
+    )
+    val c5 = Offset(
+        x = 0.55f + 0.10f * cos(rad * 0.85f + 3f),
+        y = 0.48f + 0.12f * sin(rad * 1.05f)
     )
 
-    // Neon green / teal / deep purple / near-black mesh
-    val colorA = Color(0xFF00E676)
-    val colorB = Color(0xFF00BFA5)
-    val colorC = Color(0xFF7C4DFF)
-    val colorD = Color(0xFF1A237E)
+    // White / light gray / mid gray / charcoal – no neon
+    val white = Color(0xFFF5F5F5)
+    val lightGray = Color(0xFFBDBDBD)
+    val midGray = Color(0xFF757575)
+    val darkGray = Color(0xFF424242)
+    val nearBlack = Color(0xFF121212)
     val base = Color(0xFF0A0A0A)
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
 
-        // Base
         drawRect(base)
 
         fun blob(center: Offset, color: Color, radiusFrac: Float, alpha: Float) {
@@ -75,18 +79,20 @@ fun MeshGradientBackground(
             )
         }
 
-        blob(c1, colorA, 0.55f, 0.35f)
-        blob(c2, colorB, 0.50f, 0.30f)
-        blob(c3, colorC, 0.60f, 0.28f)
-        blob(c4, colorD, 0.45f, 0.40f)
+        // Soft light blobs on dark base → white–gray–black mesh
+        blob(c1, white, 0.58f, 0.22f)
+        blob(c2, lightGray, 0.52f, 0.28f)
+        blob(c3, midGray, 0.62f, 0.32f)
+        blob(c4, darkGray, 0.48f, 0.38f)
+        blob(c5, white, 0.40f, 0.12f)
 
-        // Subtle top vignette
+        // Depth: top highlight + bottom vignette
         drawRect(
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    Color.Black.copy(alpha = 0.25f),
+                    Color.White.copy(alpha = 0.06f),
                     Color.Transparent,
-                    Color.Black.copy(alpha = 0.45f)
+                    nearBlack.copy(alpha = 0.55f)
                 )
             )
         )
