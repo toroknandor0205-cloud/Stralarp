@@ -2,6 +2,7 @@ package com.stralarp.app.ui.screens
 
 import android.Manifest
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -15,6 +16,8 @@ import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -53,7 +56,10 @@ fun HomeScreen(viewModel: MainViewModel) {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
-        if (grants.values.any { it }) {
+        if (grants.filterKeys {
+            it == Manifest.permission.ACCESS_FINE_LOCATION ||
+                it == Manifest.permission.ACCESS_COARSE_LOCATION
+        }.values.any { it }) {
             viewModel.startRecording(context)
             showCreateScreen = true
         }
@@ -164,12 +170,14 @@ fun HomeScreen(viewModel: MainViewModel) {
                 } else {
                     GlassOutlinedButton(
                         onClick = {
-                            permissionLauncher.launch(
-                                arrayOf(
-                                    Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION
-                                )
+                            val perms = mutableListOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
                             )
+                            if (Build.VERSION.SDK_INT >= 33) {
+                                perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                            permissionLauncher.launch(perms.toTypedArray())
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -212,21 +220,49 @@ fun HomeScreen(viewModel: MainViewModel) {
             onDismissRequest = { showSaved = false },
             title = { Text("Saved Routes") },
             text = {
-                if (state.savedRoutes.isEmpty()) {
-                    Text("No saved routes yet. Save from Create screen.")
-                } else {
-                    LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                        items(state.savedRoutes, key = { it.id }) { meta ->
-                            SavedRouteRow(
-                                meta = meta,
-                                onLoad = {
-                                    viewModel.loadSavedRoute(meta.id)
-                                    showSaved = false
-                                    showCreateScreen = true
-                                },
-                                onDelete = { viewModel.deleteSavedRoute(meta.id) }
-                            )
-                            HorizontalDivider()
+                Column {
+                    OutlinedTextField(
+                        value = state.savedSearchQuery,
+                        onValueChange = { viewModel.setSavedSearchQuery(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Search by name") },
+                        placeholder = { Text("e.g. Morning") }
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Text("Favorites only", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.weight(1f))
+                        Switch(
+                            checked = state.savedFavoritesOnly,
+                            onCheckedChange = { viewModel.setSavedFavoritesOnly(it) }
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    if (state.savedRoutes.isEmpty()) {
+                        Text(
+                            if (state.savedSearchQuery.isNotBlank() || state.savedFavoritesOnly)
+                                "No matching routes."
+                            else
+                                "No saved routes yet. Save from Create screen."
+                        )
+                    } else {
+                        LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                            items(state.savedRoutes, key = { it.id }) { meta ->
+                                SavedRouteRow(
+                                    meta = meta,
+                                    onLoad = {
+                                        viewModel.loadSavedRoute(meta.id)
+                                        showSaved = false
+                                        showCreateScreen = true
+                                    },
+                                    onDelete = { viewModel.deleteSavedRoute(meta.id) },
+                                    onToggleFavorite = { viewModel.toggleFavorite(meta.id) }
+                                )
+                                HorizontalDivider()
+                            }
                         }
                     }
                 }
@@ -242,7 +278,8 @@ fun HomeScreen(viewModel: MainViewModel) {
 private fun SavedRouteRow(
     meta: SavedRouteMeta,
     onLoad: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onToggleFavorite: () -> Unit
 ) {
     val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         .format(Date(meta.savedAt))
@@ -252,6 +289,13 @@ private fun SavedRouteRow(
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        IconButton(onClick = onToggleFavorite) {
+            Icon(
+                if (meta.favorite) Icons.Default.Star else Icons.Default.StarBorder,
+                contentDescription = "Favorite",
+                tint = if (meta.favorite) Color(0xFFFFD54F) else Color.Gray
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(meta.name, style = MaterialTheme.typography.titleSmall)
             Text(
