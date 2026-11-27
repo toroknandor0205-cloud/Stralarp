@@ -21,7 +21,8 @@ data class SavedRouteMeta(
     val pointCount: Int,
     val activityType: String,
     val savedAt: Long,
-    val fileName: String
+    val fileName: String,
+    val favorite: Boolean = false
 )
 
 class SavedRoutesStore(private val context: Context) {
@@ -32,8 +33,21 @@ class SavedRoutesStore(private val context: Context) {
     private val writer = GpxWriter()
     private val parser = GpxParser()
 
-    suspend fun list(): List<SavedRouteMeta> = withContext(Dispatchers.IO) {
-        readIndex().sortedByDescending { it.savedAt }
+    suspend fun list(
+        query: String = "",
+        favoritesOnly: Boolean = false
+    ): List<SavedRouteMeta> = withContext(Dispatchers.IO) {
+        var items = readIndex()
+        if (favoritesOnly) items = items.filter { it.favorite }
+        val q = query.trim()
+        if (q.isNotEmpty()) {
+            items = items.filter { it.name.contains(q, ignoreCase = true) }
+        }
+        // Favorites first, then newest
+        items.sortedWith(
+            compareByDescending<SavedRouteMeta> { it.favorite }
+                .thenByDescending { it.savedAt }
+        )
     }
 
     suspend fun save(route: Route): SavedRouteMeta = withContext(Dispatchers.IO) {
@@ -49,12 +63,21 @@ class SavedRoutesStore(private val context: Context) {
             pointCount = route.points.size,
             activityType = route.activityType,
             savedAt = System.currentTimeMillis(),
-            fileName = fileName
+            fileName = fileName,
+            favorite = false
         )
         val all = readIndex().toMutableList()
         all.add(meta)
         writeIndex(all)
         meta
+    }
+
+    suspend fun setFavorite(id: String, favorite: Boolean) = withContext(Dispatchers.IO) {
+        val all = readIndex().toMutableList()
+        val idx = all.indexOfFirst { it.id == id }
+        if (idx < 0) return@withContext
+        all[idx] = all[idx].copy(favorite = favorite)
+        writeIndex(all)
     }
 
     suspend fun load(id: String): Route? = withContext(Dispatchers.IO) {
@@ -86,7 +109,8 @@ class SavedRoutesStore(private val context: Context) {
                     pointCount = o.getInt("pointCount"),
                     activityType = o.optString("activityType", "running"),
                     savedAt = o.getLong("savedAt"),
-                    fileName = o.getString("fileName")
+                    fileName = o.getString("fileName"),
+                    favorite = o.optBoolean("favorite", false)
                 )
             }
         } catch (_: Exception) {
@@ -106,6 +130,7 @@ class SavedRoutesStore(private val context: Context) {
                 put("activityType", m.activityType)
                 put("savedAt", m.savedAt)
                 put("fileName", m.fileName)
+                put("favorite", m.favorite)
             })
         }
         indexFile.writeText(arr.toString())

@@ -13,6 +13,7 @@ import kotlin.random.Random
 /**
  * Generates an approximate loop (or out-and-back) of target distance
  * around a center point, snapped to roads via OSRM.
+ * Tries several shapes and radius scales, keeps the closest match.
  */
 class AutoRouteGenerator(private val osrm: OsrmClient) {
 
@@ -24,39 +25,51 @@ class AutoRouteGenerator(private val osrm: OsrmClient) {
         activityType: String = "running"
     ): List<TrackPoint> = withContext(Dispatchers.IO) {
         val targetMeters = (targetKm * 1000.0).coerceIn(500.0, 50_000.0)
-        // Circumference ≈ 2πr  →  r = target / 2π
         var radiusM = if (loop) targetMeters / (2 * PI) else targetMeters / 2.0
-        // Roads are longer than straight lines – start a bit smaller
-        radiusM *= 0.82
+        // Roads are longer than straight lines
+        radiusM *= 0.78
 
         var best: List<TrackPoint> = emptyList()
         var bestDiff = Double.MAX_VALUE
 
-        // Up to 3 attempts with radius adjustment
-        repeat(3) { attempt ->
-            val waypoints = if (loop) {
-                circleWaypoints(centerLat, centerLon, radiusM, count = waypointCount(targetKm))
+        val shapes = if (loop) listOf("circle", "ellipse", "rounded", "figure8") else listOf("outback")
+
+        // Up to 5 radius iterations × shape variants
+        repeat(5) { attempt ->
+            for (shape in shapes) {
+                val waypoints = when (shape) {
+                    "ellipse" -> ellipseWaypoints(centerLat, centerLon, radiusM, radiusM * 0.72)
+                    "rounded" -> roundedSquareWaypoints(centerLat, centerLon, radiusM)
+                    "figure8" -> figure8Waypoints(centerLat, centerLon, radiusM * 0.55)
+                    "outback" -> outAndBackWaypoints(centerLat, centerLon, radiusM)
+                    else -> circleWaypoints(centerLat, centerLon, radiusM, waypointCount(targetKm))
+                }
+
+                val snapped = snapWaypoints(waypoints)
+                if (snapped.size < 3) continue
+
+                val routed = routeAlong(snapped, closeLoop = loop)
+                if (routed.size < 4) continue
+
+                val dist = totalDistance(routed)
+                val diff = kotlin.math.abs(dist - targetMeters)
+                if (diff < bestDiff) {
+                    bestDiff = diff
+                    best = routed
+                }
+                // Good enough: within 8%
+                if (diff / targetMeters < 0.08) {
+                    return@withContext best
+                }
+            }
+
+            if (best.isNotEmpty()) {
+                val dist = totalDistance(best)
+                if (dist > 0) {
+                    radiusM *= (targetMeters / dist).coerceIn(0.60, 1.60)
+                }
             } else {
-                outAndBackWaypoints(centerLat, centerLon, radiusM)
-            }
-
-            val snapped = snapWaypoints(waypoints)
-            if (snapped.size < 3) return@repeat
-
-            val routed = routeAlong(snapped, closeLoop = loop)
-            if (routed.size < 4) return@repeat
-
-            val dist = totalDistance(routed)
-            val diff = kotlin.math.abs(dist - targetMeters)
-            if (diff < bestDiff) {
-                bestDiff = diff
-                best = routed
-            }
-
-            // Adjust radius for next try
-            if (dist > 0) {
-                val scale = targetMeters / dist
-                radiusM *= scale.coerceIn(0.65, 1.55)
+                radiusM *= 1.08
             }
         }
 
@@ -64,10 +77,10 @@ class AutoRouteGenerator(private val osrm: OsrmClient) {
     }
 
     private fun waypointCount(targetKm: Double): Int = when {
-        targetKm <= 4 -> 6
-        targetKm <= 10 -> 7
-        targetKm <= 20 -> 8
-        else -> 10
+        targetKm <= 4 -> 7
+        targetKm <= 10 -> 8
+        targetKm <= 20 -> 10
+        else -> 12
     }
 
     private fun circleWaypoints(
@@ -80,11 +93,66 @@ class AutoRouteGenerator(private val osrm: OsrmClient) {
         val startAngle = Random.nextDouble(0.0, 2 * PI)
         for (i in 0 until count) {
             val angle = startAngle + 2 * PI * i / count
-            // Slight radius jitter so it's not a perfect circle
-            val r = radiusM * (0.88 + Random.nextDouble() * 0.24)
+            val r = radiusM * (0.90 + Random.nextDouble() * 0.18)
             points.add(destinationPoint(lat, lon, r, angle))
         }
         return points
+    }
+
+    private fun ellipseWaypoints(
+        lat: Double,
+        lon: Double,
+        radiusAM: Double,
+        radiusBM: Double
+    ): List<TrackPoint> {
+        val count = 8
+        val start = Random.nextDouble(0.0, 2 * PI)
+        val points = mutableListOf<TrackPoint>()
+        for (i in 0 until count) {
+            val t = start + 2 * PI * i / count
+            // Approximate ellipse in local frame
+            val dx = radiusAM * cos(t)
+            val dy = radiusBM * sin(t)
+            val r = kotlin.math.sqrt(dx * dx + dy * dy)
+            val bearing = atan2(dx, dy) // note: lon/lat orientation via destination
+            points.add(destinationPoint(lat, lon, r, bearing))
+        }
+        return points
+    }
+
+    private fun roundedSquareWaypoints(
+        lat: Double,
+        lon: Double,
+        radiusM: Double
+    ): List<TrackPoint> {
+        val start = Random.nextDouble(0.0, 2 * PI)
+        // 8 points around a rounded square (corners pushed out slightly)
+        val angles = listOf(0.0, 0.35, PI / 2, PI / 2 + 0.35, PI, PI + 0.35, 3 * PI / 2, 3 * PI / 2 + 0.35)
+        return angles.map { a ->
+            val angle = start + a
+            val cornerBoost = if ((a / (PI / 4)).toInt() % 2 == 0) 1.08 else 0.92
+            destinationPoint(lat, lon, radiusM * cornerBoost, angle)
+        }
+    }
+
+    private fun figure8Waypoints(
+        lat: Double,
+        lon: Double,
+        lobeRadiusM: Double
+    ): List<TrackPoint> {
+        val bearing = Random.nextDouble(0.0, 2 * PI)
+        val lobeA = destinationPoint(lat, lon, lobeRadiusM, bearing)
+        val lobeB = destinationPoint(lat, lon, lobeRadiusM, bearing + PI)
+        val midA1 = destinationPoint(lat, lon, lobeRadiusM * 0.7, bearing + 0.6)
+        val midA2 = destinationPoint(lat, lon, lobeRadiusM * 0.7, bearing - 0.6)
+        val midB1 = destinationPoint(lat, lon, lobeRadiusM * 0.7, bearing + PI + 0.6)
+        val midB2 = destinationPoint(lat, lon, lobeRadiusM * 0.7, bearing + PI - 0.6)
+        return listOf(
+            TrackPoint(lat, lon),
+            midA1, lobeA, midA2,
+            TrackPoint(lat, lon),
+            midB1, lobeB, midB2
+        )
     }
 
     private fun outAndBackWaypoints(
@@ -94,15 +162,9 @@ class AutoRouteGenerator(private val osrm: OsrmClient) {
     ): List<TrackPoint> {
         val bearing = Random.nextDouble(0.0, 2 * PI)
         val far = destinationPoint(lat, lon, halfDistanceM, bearing)
-        // A couple of intermediate points for nicer shape
-        val mid1 = destinationPoint(lat, lon, halfDistanceM * 0.35, bearing + 0.15)
-        val mid2 = destinationPoint(lat, lon, halfDistanceM * 0.7, bearing - 0.1)
-        return listOf(
-            TrackPoint(lat, lon),
-            mid1,
-            mid2,
-            far
-        )
+        val mid1 = destinationPoint(lat, lon, halfDistanceM * 0.35, bearing + 0.12)
+        val mid2 = destinationPoint(lat, lon, halfDistanceM * 0.7, bearing - 0.08)
+        return listOf(TrackPoint(lat, lon), mid1, mid2, far)
     }
 
     private suspend fun snapWaypoints(raw: List<TrackPoint>): List<TrackPoint> {
@@ -143,7 +205,6 @@ class AutoRouteGenerator(private val osrm: OsrmClient) {
         return d
     }
 
-    /** Destination point given distance (m) and bearing (radians). */
     private fun destinationPoint(
         lat: Double,
         lon: Double,
