@@ -15,7 +15,6 @@ import android.os.Bundle
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.stralarp.app.MainActivity
-import com.stralarp.app.R
 import com.stralarp.app.data.model.TrackPoint
 
 /**
